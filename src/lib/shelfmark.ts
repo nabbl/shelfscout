@@ -1,0 +1,2 @@
+import { configuredUpstreamUrl } from "./security";
+export class ShelfmarkClient {private base:URL;constructor(base=process.env.SHELFMARK_URL,private cookie=process.env.SHELFMARK_COOKIE){this.base=configuredUpstreamUrl(base,"Shelfmark");}async health(){const url=new URL("/api/health",this.base.origin);const r=await fetch(url,{headers:this.cookie?{Cookie:this.cookie}:{},signal:AbortSignal.timeout(10_000),cache:"no-store"});if(!r.ok)throw new Error(`Shelfmark ${r.status}`);return r.json();}}
