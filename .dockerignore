@@ -4,3 +4,9 @@ node_modules
 data
 .env
 npm-debug.log
+
+.env.*
+!.env.example
+outputs
+test-results
+docs/evaluation

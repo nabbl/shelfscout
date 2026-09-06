@@ -1,0 +1,33 @@
+
+> shelfscout@0.1.0 evaluate
+> tsx scripts/evaluation/run.ts
+
+{
+  "top3PositiveSubject": {
+    "baseline": 1,
+    "new": 3
+  },
+  "batchOverlap": {
+    "baseline": 9,
+    "new": 0
+  },
+  "distinctAuthors": {
+    "baseline": 9,
+    "new": 9
+  },
+  "moodAdventureTop3": {
+    "baseline": 2,
+    "new": 3
+  },
+  "positiveCounterfactualWarTop3": {
+    "new": 3
+  },
+  "verifiedAliasKnownReadExcluded": {
+    "baseline": false,
+    "new": true
+  },
+  "unsupportedFavoriteRelationshipClaims": {
+    "baseline": 9,
+    "new": 0
+  }
+}

@@ -1,5 +1,11 @@
-import { getDb } from "@/src/lib/db";
-import { discoverOpenLibrary, rankCandidates } from "@/src/lib/recommendations";
-import { requireOwnerApi } from "@/src/lib/auth";
-import { rerankWithConfiguredModel } from "@/src/lib/model";
-export async function GET(request:Request){const auth=await requireOwnerApi();if(auth)return auth;const db=getDb();const mood=new URL(request.url).searchParams.get("mood")?.slice(0,80)||"";const known=new Set((db.prepare("SELECT DISTINCT work_key FROM reading_records WHERE exclusive_status IN ('read','currently-reading') OR read_count > 0").all() as {work_key:string}[]).map(r=>r.work_key));const dismissed=new Set((db.prepare("SELECT DISTINCT work_key FROM feedback WHERE action IN ('not_interested','already_read')").all() as {work_key:string}[]).map(r=>r.work_key));const positives=(db.prepare("SELECT title FROM reading_records WHERE personal_rating>=4 ORDER BY date_read DESC LIMIT 8").all() as {title:string}[]).map(r=>r.title);const shelves=(db.prepare("SELECT shelves_json FROM reading_records WHERE personal_rating>=4 LIMIT 100").all() as {shelves_json:string}[]).flatMap(r=>{try{return JSON.parse(r.shelves_json) as string[]}catch{return[]}});const negativeSignals=(db.prepare("SELECT shelves_json FROM reading_records WHERE personal_rating BETWEEN 1 AND 2 LIMIT 100").all() as {shelves_json:string}[]).flatMap(r=>{try{return JSON.parse(r.shelves_json) as string[]}catch{return[]}}).filter(s=>!/read|owned|to-read/i.test(s));const subject=[...new Set(shelves)].filter(s=>!/read|owned|to-read/i.test(s)).slice(0,3).join(" OR ")||"literary fiction";try{const ranked=rankCandidates(await discoverOpenLibrary(`${subject}${mood?` ${mood}`:""}`),known,dismissed,positives,mood,negativeSignals);let result:{items:typeof ranked;adapter:string}={items:ranked,adapter:"deterministic"};try{result=await rerankWithConfiguredModel(ranked,{positiveTitles:positives,mood});}catch{/* Model failure must not block catalog-grounded recommendations. */}return Response.json({items:result.items,source:"Open Library",rankingAdapter:result.adapter,generatedAt:new Date().toISOString()});}catch(error){return Response.json({items:[],source:"Open Library",error:error instanceof Error?error.message:"Candidate source unavailable"},{status:503});}}
+import { z } from 'zod';
+import { getDb } from '@/src/lib/db';
+import { requireOwnerApi, requireCsrf } from '@/src/lib/auth';
+import { batchState, queueBatch } from '@/src/lib/recommendation/engine';
+const schema = z.object({ mood: z.string().max(160).default(''), mode: z.enum(['more', 'refresh']).default('more'), rereads: z.boolean().default(false) });
+export async function GET() { const auth = await requireOwnerApi(); if (auth)
+    return auth; return Response.json(batchState(getDb()), { headers: { 'Cache-Control': 'private, no-store' } }); }
+export async function POST(request: Request) { const auth = await requireOwnerApi(); if (auth)
+    return auth; const csrf = await requireCsrf(); if (csrf)
+    return csrf; const parsed = schema.safeParse(await request.json().catch(() => null)); if (!parsed.success)
+    return Response.json({ error: 'Invalid batch settings' }, { status: 400 }); return Response.json({ id: queueBatch(getDb(), parsed.data) }, { status: 202 }); }
