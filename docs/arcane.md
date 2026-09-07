@@ -22,3 +22,9 @@ Configure flat single-EPUB folder output in Shelfmark and disable Book Dock auto
 Both services share the project-scoped `shelfscout-data` SQLite volume. Container database paths stay `/data`; web health gates worker startup. Existing records are migrated additively and pending BookOrbit requests remain tracked. Configure network access to the existing services using your deployment's host URLs or external network; the Compose file does not deploy Shelfmark or BookOrbit.
 
 For local source builds, `compose.yml` builds `.` by default. For Arcane, save the configuration and choose Build / Build & Deploy only when you intend to deploy a published, reviewed revision. Development validation uses Compose configuration inspection only, not running containers or downloading books.
+
+## Local image pull errors
+
+`shelfscout:local` is the output tag of the source build, not a published registry image. Both Compose files set `pull_policy: build` on web and worker so Compose builds the configured context instead of trying Docker Hub first. See [Docker's build/pull rules](https://docs.docker.com/reference/compose-file/build/#using-build-and-image).
+
+If Arcane stores its own copy of the Compose YAML, update that copy as well: add `pull_policy: build` beside `image: shelfscout:local` in `x-shelfscout`. Updating the Git build context alone updates application source, not Arcane's saved service configuration. Use the project's Build / Build & Deploy operation; an explicit image-only Pull operation cannot produce an unpublished local image. Ensure `SHELFSCOUT_BUILD_CONTEXT` is the repository URL with `#main` (or the reviewed commit), rather than the old Arcane setup branch.

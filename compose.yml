@@ -2,6 +2,8 @@ name: shelfscout
 
 x-shelfscout: &shelfscout
   image: shelfscout:local
+  # This tag is built from source; it is not published in a registry.
+  pull_policy: build
   build:
     # Local checkout by default; Arcane can use a Git URL here via its .env editor.
     context: ${SHELFSCOUT_BUILD_CONTEXT:-.}
