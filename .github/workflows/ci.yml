@@ -228,4 +228,4 @@ jobs:
             git commit -m "Deploy image for $GITHUB_SHA"
             git push origin "HEAD:refs/heads/$branch"
           fi
-          echo 'Arcane GitOps: branch `codex/ghcr-deploy`, Compose path `compose.yml`.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Arcane GitOps: branch codex/ghcr-deploy, Compose path compose.yml.' >> "$GITHUB_STEP_SUMMARY"
