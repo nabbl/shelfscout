@@ -81,6 +81,36 @@ function setup(persist = false) {
   return { h, fetchMock, start, step, queueDownload, deliver };
 }
 describe('Shelfmark → Book Dock → Kobo lifecycle', () => {
+  it('reports all missing destination settings before upstream checks and can resume after configuration', async () => {
+    const { h, start, step, fetchMock } = setup();
+    await start(); await step(); await step();
+    vi.stubEnv('BOOKORBIT_LIBRARY_ID', '');
+    vi.stubEnv('SHELFSCOUT_INCOMING_DIR', '');
+    fetchMock.mockClear();
+    await step();
+    const error = acquisition(h.db, h.id)!.last_error;
+    expect(error).toContain('Set BOOKORBIT_LIBRARY_ID, SHELFSCOUT_INCOMING_DIR');
+    expect(error).not.toContain('BOOKORBIT_FOLDER_ID');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(flow(h.db, h.id)!.download_attempted_at).toBeNull();
+    vi.stubEnv('BOOKORBIT_LIBRARY_ID', '4');
+    vi.stubEnv('SHELFSCOUT_INCOMING_DIR', h.incoming);
+    updateAcquisition(h.db, h.id, 'recheck');
+    await step(); expect(h.downloadPosts).toBe(1);
+  });
+  it.each([
+    ['BOOKORBIT_FOLDER_ID', '1.5', 'positive integer IDs'],
+    ['BOOKORBIT_DOCK_DIR', '', 'Set BOOKORBIT_DOCK_DIR'],
+    ['SHELFMARK_OUTPUT_DIR', 'books', 'absolute folder paths for SHELFMARK_OUTPUT_DIR'],
+  ])('rejects invalid %s before recording a download attempt', async (key, value, message) => {
+    const { h, start, step, fetchMock } = setup();
+    await start(); await step(); await step();
+    vi.stubEnv(key, value); fetchMock.mockClear();
+    await step();
+    expect(acquisition(h.db, h.id)!.last_error).toContain(message);
+    expect(flow(h.db, h.id)!.download_attempted_at).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('persists atomic intent, deduplicates concurrent clicks, verifies ownership before download', async () => {
     const { h, fetchMock, step } = setup(); h.owned = 91;
     const results = await Promise.all(Array.from({ length: 12 }, () => submitAcquisition(h.db, candidate, '12')));
@@ -162,7 +192,56 @@ describe('Shelfmark → Book Dock → Kobo lifecycle', () => {
     const { h, queueDownload, step } = setup(); await queueDownload(); h.activity[0].state = state;
     await step(); expect(acquisition(h.db, h.id)!.status).toBe('needs_attention'); expect(h.importPosts).toBe(0); expect(h.downloadPosts).toBe(1);
   });
-  it('rejects reused source IDs from another source or submission generation', async () => {
+  it('accepts Shelfmark whole-second persisted activity after observing a fractional active timestamp across restart', async () => {
+    const { h, queueDownload, step, deliver } = setup(true);
+    await queueDownload();
+    const addedTime = Math.floor(Number(h.activity[0].added_time)) + 0.678;
+    h.activity[0].added_time = addedTime;
+    await step();
+    // An acquisition stopped by the previous exact comparison can use Recheck
+    // after upgrading; its saved timestamp and attempt marker remain intact.
+    h.db.prepare("UPDATE acquisitions SET status='needs_attention',last_error='Shelfmark activity belongs to a different submission generation.' WHERE id=?").run(h.id);
+    h.db.close(); h.db = createDatabase(h.dbPath);
+    updateAcquisition(h.db, h.id, 'recheck');
+    h.activity[0].added_time = Math.floor(addedTime);
+    await deliver();
+    expect(acquisition(h.db, h.id)!.status).toBe('awaiting_import');
+    expect(JSON.parse(flow(h.db, h.id)!.evidence_json!).taskAddedTime).toBe(addedTime);
+    await step(); await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('ready_for_kobo');
+    expect(h.downloadPosts).toBe(1); expect(h.importPosts).toBe(1);
+  });
+  it('surfaces download failure after Shelfmark rounds the timestamp in persisted history', async () => {
+    const { h, queueDownload, step } = setup(); await queueDownload();
+    const addedTime = Math.floor(Number(h.activity[0].added_time)) + 0.678;
+    h.activity[0].added_time = addedTime; await step();
+    h.history = [{ item_type: 'download', final_status: 'error', snapshot: { download: { ...h.activity[0], added_time: Math.floor(addedTime) } } }];
+    h.activity = [];
+    await step();
+    expect(acquisition(h.db, h.id)!.last_error).toContain('download failed or was cancelled');
+    expect(h.downloadPosts).toBe(1); expect(h.importPosts).toBe(0);
+  });
+  it.each(['older', 'newer', 'different-fraction', 'missing'])('rejects %s submission timestamps without importing or redownloading', async kind => {
+    const { h, queueDownload, step } = setup(); await queueDownload();
+    const addedTime = Math.floor(Number(h.activity[0].added_time)) + 0.4;
+    h.activity[0].added_time = addedTime;
+    if (kind !== 'older') await step();
+    h.activity[0].added_time = kind === 'older' ? addedTime - 60 : kind === 'newer' ? Math.floor(addedTime) + 1 : kind === 'different-fraction' ? addedTime + 0.1 : undefined;
+    await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('needs_attention');
+    expect(h.downloadPosts).toBe(1); expect(h.importPosts).toBe(0);
+  });
+  it('retains fractional evidence after a whole-second observation', async () => {
+    const { h, queueDownload, step } = setup(); await queueDownload();
+    const addedTime = Math.floor(Number(h.activity[0].added_time)) + 0.4;
+    h.activity[0].added_time = addedTime; await step();
+    h.activity[0].added_time = Math.floor(addedTime); await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('downloading');
+    h.activity[0].added_time = addedTime + 0.1; await step();
+    expect(acquisition(h.db, h.id)!.last_error).toContain('different submission generation');
+    expect(h.downloadPosts).toBe(1); expect(h.importPosts).toBe(0);
+  });
+  it('rejects reused source IDs from another source', async () => {
     const { h, queueDownload, step } = setup(); await queueDownload(); h.activity[0].source = 'another-source';
     await step(); expect(acquisition(h.db, h.id)!.status).toBe('needs_attention'); expect(h.importPosts).toBe(0);
   });

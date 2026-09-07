@@ -7,6 +7,12 @@ import { metadataMatches, releaseAssessment } from './acquisition-identity';
 import { checkIncomingDirectory, incomingEvidence, sameFile, type FileEvidence } from './acquisition-files';
 
 type Evidence = { baselineDockIds: number[]; file?: FileEvidence; taskAddedTime?: number };
+function sameSubmissionTime(saved: number, current: number) {
+  // Shelfmark exposes time.time() for active tasks, but persists queued_at with
+  // seconds precision. Terminal snapshot/history entries therefore lose fractions.
+  // Retain exact comparison when both timestamps still carry that precision.
+  return saved === current || ((Number.isInteger(saved) || Number.isInteger(current)) && Math.floor(saved) === Math.floor(current));
+}
 export interface AcquisitionAdapters { bo: BookOrbitClient; shelfmark: () => ShelfmarkClient; evidence: typeof incomingEvidence; now: () => number; }
 const candidateFor = (row: Acquisition): BookCandidate => ({ title: row.title, author: row.author, isbn13: row.isbn13, language: row.language });
 function attention(db: Database.Database, id: string, detail: string) { recordStatus(db, id, 'needs_attention', detail); return false; }
@@ -61,6 +67,17 @@ async function validateDockSetup(bo: BookOrbitClient) {
   const settings = await bo.dockSettings();
   if (!process.env.BOOKORBIT_DOCK_DIR || path.posix.normalize(settings.bookDockPath) !== path.posix.normalize(process.env.BOOKORBIT_DOCK_DIR)) throw new Error('BookOrbit Book Dock path does not match BOOKORBIT_DOCK_DIR. Verify the shared host-directory mapping.');
   if (settings.autoFinalizeEnabled !== false) throw new Error('Book Dock auto-finalization must be disabled for ShelfScout to verify files before import. Review BookOrbit settings, then Recheck.');
+}
+function downloadDestination() {
+  const required = ['BOOKORBIT_LIBRARY_ID', 'BOOKORBIT_FOLDER_ID', 'BOOKORBIT_DOCK_DIR', 'SHELFMARK_OUTPUT_DIR', 'SHELFSCOUT_INCOMING_DIR'];
+  const missing = required.filter(key => !process.env[key]?.trim());
+  if (missing.length) throw new Error(`Download setup is incomplete. Set ${missing.join(', ')} in the ShelfScout worker environment, restart the worker, then Recheck. The incoming folder must expose the same files as Shelfmark output and BookOrbit Book Dock; see docs/integrations.md.`);
+  const library = Number(process.env.BOOKORBIT_LIBRARY_ID), folder = Number(process.env.BOOKORBIT_FOLDER_ID);
+  if (!Number.isSafeInteger(library) || library < 1 || !Number.isSafeInteger(folder) || folder < 1) throw new Error('BOOKORBIT_LIBRARY_ID and BOOKORBIT_FOLDER_ID must be positive integer IDs for the final BookOrbit library and its folder.');
+  const invalidPaths = ['BOOKORBIT_DOCK_DIR', 'SHELFMARK_OUTPUT_DIR'].filter(key => !path.posix.isAbsolute(process.env[key]!));
+  if (!path.isAbsolute(process.env.SHELFSCOUT_INCOMING_DIR!)) invalidPaths.push('SHELFSCOUT_INCOMING_DIR');
+  if (invalidPaths.length) throw new Error(`Use absolute folder paths for ${invalidPaths.join(', ')}. Each path is relative to its own service and must map to the same shared incoming directory.`);
+  return { library, folder };
 }
 function validateDockFile(c: BookCandidate, file: DockFile, evidence: FileEvidence) {
   if (file.status !== 'ready' || file.fileName !== evidence.name || file.fileSize !== evidence.size || file.format?.toLowerCase() !== 'epub' || !Array.isArray(file.unitFiles) || file.unitFiles.length) throw new Error('Book Dock file evidence changed or represents a multi-file unit. Review this entry.');
@@ -128,9 +145,8 @@ export async function reconcileAcquisition(db: Database.Database, id: string, ad
     const release = f.release_json ? JSON.parse(f.release_json) as Release : undefined;
     if (!release) return attention(db, id, 'Saved release is missing. Review acquisition data.');
     if (f.phase === 'submit_download' && !f.download_attempted_at) {
+      const { library, folder } = downloadDestination();
       await validateDockSetup(bo);
-      const library = Number(process.env.BOOKORBIT_LIBRARY_ID), folder = Number(process.env.BOOKORBIT_FOLDER_ID);
-      if (!Number.isSafeInteger(library) || library < 1 || !Number.isSafeInteger(folder) || folder < 1 || !process.env.SHELFSCOUT_INCOMING_DIR || !process.env.SHELFMARK_OUTPUT_DIR) throw new Error('Configure BOOKORBIT_LIBRARY_ID, BOOKORBIT_FOLDER_ID and the incoming-folder mapping before downloading.');
       await checkIncomingDirectory();
       const collections = await bo.collections();
       const targets = db.prepare('SELECT collection_id FROM acquisition_targets WHERE acquisition_id=?').all(id) as {collection_id:string}[];
@@ -158,8 +174,12 @@ export async function reconcileAcquisition(db: Database.Database, id: string, ad
         if (deps.now() - Date.parse(f.download_attempted_at!) > 10 * 60_000) return attention(db, id, 'No activity confirms the saved submission after 10 minutes. Inspect Shelfmark history or resume that release manually, then Recheck. ShelfScout will not resubmit it.');
         return true;
       }
-      if (!activity.added_time || activity.added_time * 1000 < Date.parse(f.download_attempted_at!) - 5000 || (evidence.taskAddedTime && evidence.taskAddedTime !== activity.added_time)) return attention(db, id, 'Shelfmark activity belongs to a different submission generation. Review its history before continuing.');
-      evidence.taskAddedTime = activity.added_time;
+      if (typeof activity.added_time !== 'number' || !Number.isFinite(activity.added_time) || activity.added_time <= 0) return attention(db, id, 'Shelfmark activity has no valid submission timestamp. Review its history before continuing.');
+      if (activity.added_time * 1000 < Date.parse(f.download_attempted_at!) - 5000) return attention(db, id, 'Shelfmark activity predates this submission. Review its history and check that both servers have synchronized clocks.');
+      if (evidence.taskAddedTime !== undefined && !sameSubmissionTime(evidence.taskAddedTime, activity.added_time)) return attention(db, id, 'Shelfmark activity belongs to a different submission generation. Review its history before continuing.');
+      // Keep the first observation; replacing it with a rounded value would lose
+      // evidence needed to reject a later, different fractional timestamp.
+      evidence.taskAddedTime ??= activity.added_time;
       db.prepare('UPDATE acquisition_flows SET download_seen_at=?,evidence_json=? WHERE acquisition_id=?').run(new Date(deps.now()).toISOString(), JSON.stringify(evidence), id);
       if (['error', 'failed', 'cancelled'].includes(activity.state)) return attention(db, id, 'Shelfmark download failed or was cancelled. Review or resume the saved release in Shelfmark, then Recheck.');
       if (activity.state !== 'complete') { recordStatus(db, id, 'downloading', 'Shelfmark is downloading or delivering the selected release.'); return true; }
