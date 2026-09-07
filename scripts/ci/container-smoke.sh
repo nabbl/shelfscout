@@ -22,8 +22,10 @@ cleanup() {
 trap cleanup EXIT
 docker network create --internal "$network" >/dev/null
 docker volume create "$volume" >/dev/null
+owner_hash=$(docker run --rm --network none "$image" node -e 'console.log(require("bcryptjs").hashSync("ci-only-password", 4))')
 common=(--network "$network" --mount "type=volume,src=$volume,dst=/data"
   -e NODE_ENV=production -e DEMO_MODE=false -e DATA_DIR=/data
+  -e "OWNER_PASSWORD_HASH=$owner_hash"
   -e SHELFSCOUT_DB=/data/shelfscout.sqlite
   -e SESSION_SECRET=ci-only-disposable-session-secret-at-least-32-characters)
 docker run -d --name "$web" "${common[@]}" "$image" >/dev/null
@@ -45,6 +47,14 @@ docker exec "$web" node -e '
     assert.match(await login.text(), /[Pp]assword/);
     const privateApi = await fetch("http://127.0.0.1:3000/api/export");
     assert.equal(privateApi.status, 401);
+    const signedIn = await fetch("http://127.0.0.1:3000/api/auth/login", {
+      method: "POST", headers: {"content-type":"application/json"},
+      body: JSON.stringify({password:"ci-only-password"})
+    });
+    assert.equal(signedIn.status, 200);
+    const cookie = signedIn.headers.get("set-cookie");
+    assert.match(cookie, /; Secure/i);
+    assert.match(cookie, /; HttpOnly/i);
   })().catch(e => { console.error(e); process.exit(1); });
 '
 docker run -d --name "$worker" "${common[@]}" "$image" node --import tsx server/worker.ts >/dev/null
@@ -57,7 +67,8 @@ docker exec "$worker" node -e '
   for (const table of ["jobs", "acquisition_flows", "acquisition_targets"])
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type=? AND name=?").get("table", table));
   assert.equal(db.pragma("integrity_check", {simple:true}), "ok");
-  db.exec("CREATE TABLE ci_persistence (value TEXT); INSERT INTO ci_persistence VALUES (\u0027survives-restart\u0027)");
+  db.exec("CREATE TABLE ci_persistence (value TEXT)");
+  db.prepare("INSERT INTO ci_persistence VALUES (?)").run("survives-restart");
   db.close();
 '
 docker stop --time 15 "$worker" >/dev/null
