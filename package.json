@@ -2,7 +2,9 @@
   "name": "shelfscout",
   "version": "0.1.0",
   "private": true,
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,8 +13,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:browser": "playwright test",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "worker": "tsx server/worker.ts"
+    "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/migrate.ts",
+    "worker": "node --env-file-if-exists=.env --import tsx server/worker.ts",
+    "evaluate": "tsx scripts/evaluation/run.ts",
+    "evaluate:heldout": "tsx scripts/evaluation/heldout.ts",
+    "test:browser:live": "playwright test --config playwright.live.config.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

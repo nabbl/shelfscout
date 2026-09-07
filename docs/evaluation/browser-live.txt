@@ -1,0 +1,29 @@
+
+> shelfscout@0.1.0 test:browser:live
+> playwright test --config playwright.live.config.ts
+
+[WebServer] (node:64291) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:64320) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:64321) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:64325) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:64324) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:64327) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 4 tests using 1 worker
+
+(node:64369) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [desktop] › tests/browser-live/recommendations.spec.ts:2:5 › authenticated discovery, durable worker, preferences, details, feedback and undo (8.3s)
+  ✓  2 [desktop] › tests/browser-live/recommendations.spec.ts:35:5 › private APIs reject anonymous requests and writes require CSRF (95ms)
+(node:64440) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  3 [mobile] › tests/browser-live/recommendations.spec.ts:2:5 › authenticated discovery, durable worker, preferences, details, feedback and undo (4.7s)
+  ✓  4 [mobile] › tests/browser-live/recommendations.spec.ts:35:5 › private APIs reject anonymous requests and writes require CSRF (52ms)
+
+  4 passed (15.7s)

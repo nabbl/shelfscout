@@ -10,7 +10,8 @@ RUN npm run build
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
-RUN groupadd -g 1001 shelfscout && useradd -u 1001 -g shelfscout -m shelfscout
+RUN groupadd -g 1001 shelfscout && useradd -u 1001 -g shelfscout -m shelfscout \
+    && mkdir -p /data && chown shelfscout:shelfscout /data && chmod 700 /data
 COPY --from=builder --chown=shelfscout:shelfscout /app/.next/standalone ./
 COPY --from=builder --chown=shelfscout:shelfscout /app/.next/static ./.next/static
 COPY --from=builder --chown=shelfscout:shelfscout /app/public ./public

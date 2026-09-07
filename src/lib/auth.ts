@@ -4,7 +4,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 
 export const SESSION_COOKIE="shelfscout_session";
 export const CSRF_COOKIE="shelfscout_csrf";
-const secret=()=>{const value=process.env.SESSION_SECRET;if(process.env.NODE_ENV==="production"&&(!value||value.length<32))throw new Error("SESSION_SECRET must contain at least 32 characters in production");return new TextEncoder().encode(value||"development-only-change-me-32-bytes");};
+const secret=()=>{const value=process.env.SESSION_SECRET;if(!value||value.length<32)throw new Error("SESSION_SECRET must contain at least 32 characters");return new TextEncoder().encode(value);};
 
 export async function createSession() { return new SignJWT({role:"owner"}).setProtectedHeader({alg:"HS256"}).setIssuedAt().setExpirationTime("30d").sign(secret()); }
 export async function validSession(token?:string) { if(!token)return false; try{const {payload}=await jwtVerify(token,secret());return payload.role==="owner";}catch{return false;} }

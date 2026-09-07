@@ -1,0 +1,21 @@
+
+> shelfscout@0.1.0 test:browser
+> playwright test
+
+[WebServer] (node:64548) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:64549) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 4 tests using 2 workers
+
+(node:64594) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:64595) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [mobile] › tests/browser/demo.spec.ts:2:5 › demo discovery and detail flow (1.1s)
+  ✓  2 [desktop] › tests/browser/demo.spec.ts:2:5 › demo discovery and detail flow (1.1s)
+  ✓  4 [desktop] › tests/browser/demo.spec.ts:3:5 › demo get and dismiss are local-only (1.1s)
+  ✓  3 [mobile] › tests/browser/demo.spec.ts:3:5 › demo get and dismiss are local-only (1.1s)
+
+  4 passed (4.2s)

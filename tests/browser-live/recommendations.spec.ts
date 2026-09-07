@@ -1,0 +1,36 @@
+import { test, expect } from '@playwright/test';
+test('authenticated discovery, durable worker, preferences, details, feedback and undo', async ({ page },testInfo) => {
+    await page.goto('/');
+    await expect(page.getByText('DEMO DATA')).toHaveCount(0);
+    await page.getByLabel('Password').fill('browser-test-password');
+    await page.getByRole('button', { name: /sign in/i }).click();
+    await expect(page.getByText('PRIVATE · LIVE DATA')).toBeVisible();
+    await page.getByRole('button', { name: 'More picks', exact: true }).click();
+    await expect(page.getByRole('heading', { name: /Synthetic browser book/ }).first()).toBeVisible({ timeout: 30000 });
+    const title = await page.getByRole('heading', { name: /Synthetic browser book/ }).first().textContent();
+    await page.getByRole('button', { name: 'Why this book?' }).first().click();
+    await expect(page.getByRole('heading', { name: 'Catalog description' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Why this batch' })).toBeVisible();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: `Save ${title}`, exact: true }).click();
+    await expect(page.getByRole('heading', { name: title!, exact: true })).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText('PRIVATE · LIVE DATA')).toBeVisible();
+    const settings = page.getByRole('button', { name: 'Settings', exact: true });
+    await settings.filter({ visible: true }).first().click();
+    await expect(page.getByRole('heading', { name: 'Your taste, with evidence' })).toBeVisible();
+    await page.getByRole('textbox', { name: 'Preference description' }).fill('adventure');
+    await page.getByRole('button', { name: 'Add preference' }).click();
+    await expect(page.getByText('prefer adventure', { exact: true })).toBeVisible();
+    const log = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Saved books and feedback' }) });
+    await expect(log.getByText(new RegExp(title!))).toBeVisible();
+    await log.getByRole('button', { name: 'Undo', exact: true }).first().click();
+    await expect(log.getByText('Undone. Refresh picks to reconsider this book.')).toBeVisible();
+    await page.getByRole('button', { name: 'Discover', exact: true }).filter({ visible: true }).first().click();
+    const before = await page.getByRole('heading', { name: /Synthetic browser book/ }).allTextContents();
+    await page.getByRole('button', { name: 'More picks', exact: true }).click();
+    await expect.poll(async () => { const after = await page.getByRole('heading', { name: /Synthetic browser book/ }).allTextContents(); return after.length > 0 && after.every(t => !before.includes(t)); }, { timeout: 30000 }).toBe(true);
+    await page.screenshot({path:`docs/evaluation/browser-${testInfo.project.name}.png`,fullPage:false});
+});
+test('private APIs reject anonymous requests and writes require CSRF', async ({ request }) => { for (const url of ['/api/taste', '/api/recommendations', '/api/feedback', '/api/export'])
+    expect((await request.get(url)).status()).toBe(401); await request.post('/api/auth/login', { data: { password: 'browser-test-password' } }); expect((await request.post('/api/recommendations', { data: { mood: '' } })).status()).toBe(403); expect((await request.put('/api/taste', { data: {} })).status()).toBe(403); });

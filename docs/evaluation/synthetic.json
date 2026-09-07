@@ -1,0 +1,83 @@
+{
+  "label": "Synthetic model-free controlled diagnostics; not live AI quality",
+  "dataset": {
+    "works": 30,
+    "authors": 15,
+    "reader": "prefers memory, avoids war; counterfactual mood adventure"
+  },
+  "baseline": "Frozen previous production rankCandidates implementation",
+  "metrics": {
+    "top3PositiveSubject": {
+      "baseline": 1,
+      "new": 3
+    },
+    "batchOverlap": {
+      "baseline": 9,
+      "new": 0
+    },
+    "distinctAuthors": {
+      "baseline": 9,
+      "new": 9
+    },
+    "moodAdventureTop3": {
+      "baseline": 2,
+      "new": 3
+    },
+    "positiveCounterfactualWarTop3": {
+      "new": 3
+    },
+    "verifiedAliasKnownReadExcluded": {
+      "baseline": false,
+      "new": true
+    },
+    "unsupportedFavoriteRelationshipClaims": {
+      "baseline": 9,
+      "new": 0
+    }
+  },
+  "batches": {
+    "baseline": [
+      "Synthetic work 2",
+      "Synthetic work 3",
+      "Synthetic work 5",
+      "Synthetic work 8",
+      "Synthetic work 9",
+      "Synthetic work 11",
+      "Synthetic work 14",
+      "Synthetic work 15",
+      "Synthetic work 17"
+    ],
+    "new": [
+      "Synthetic work 12",
+      "Synthetic work 15",
+      "Synthetic work 18",
+      "Synthetic work 21",
+      "Synthetic work 24",
+      "Synthetic work 27",
+      "Synthetic work 14",
+      "Synthetic work 30",
+      "Synthetic work 20"
+    ],
+    "next": [
+      "Synthetic work 3",
+      "Synthetic work 6",
+      "Synthetic work 9",
+      "Synthetic work 11",
+      "Synthetic work 17",
+      "Synthetic work 23",
+      "Synthetic work 26",
+      "Synthetic work 29",
+      "Synthetic work 8"
+    ]
+  },
+  "heldOut": {
+    "status": "not run: no real reading-history input supplied",
+    "leakagePolicy": "Any future history evaluation must partition before profile construction AND discovery. Catalog metadata may be independently retrieved for held-out works, but held-out ratings, reviews and shelves must not influence profile, queries or candidate selection."
+  },
+  "limitations": [
+    "Synthetic labels encode intended behavior; these diagnostics do not estimate enjoyment.",
+    "Same supplied pool isolates ranking; no conclusion about live catalog retrieval recall or AI reasoning.",
+    "No arbitrary pass threshold: raw counts and batch titles are reported.",
+    "Historical exposure/popularity confounds offline ranking; randomized prospective owner feedback is needed."
+  ]
+}

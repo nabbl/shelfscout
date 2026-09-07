@@ -1,0 +1,2 @@
+import { defineConfig, devices } from '@playwright/test';
+export default defineConfig({ testDir: './tests/browser-live', timeout:60000, fullyParallel: false, workers: 1, use: { baseURL: 'http://localhost:3102', trace: 'retain-on-failure' }, webServer: { command: 'npx tsx scripts/browser-server.ts', url: 'http://localhost:3102', reuseExistingServer: false, timeout: 120000 }, projects: [{ name: 'desktop', use: { ...devices['Desktop Chrome'] } }, { name: 'mobile', use: { ...devices['Pixel 7'], browserName: 'chromium' } }] });

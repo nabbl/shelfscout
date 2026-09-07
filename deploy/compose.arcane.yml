@@ -4,7 +4,7 @@ x-shelfscout: &shelfscout
   image: shelfscout:local
   build:
     # Local checkout by default; Arcane can use a Git URL here via its .env editor.
-    context: ${SHELFSCOUT_BUILD_CONTEXT:-.}
+    context: ${SHELFSCOUT_BUILD_CONTEXT:-https://github.com/nabbl/shelfscout.git#codex/arcane-setup}
     dockerfile: Dockerfile
   env_file:
     - path: .env
