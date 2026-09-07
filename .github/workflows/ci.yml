@@ -131,7 +131,7 @@ jobs:
           name: checked-image-${{ matrix.arch }}
           path: ${{ runner.temp }}/image-${{ matrix.arch }}.tar
           retention-days: 1
-          compression-level: 0
+          compression-level: 6
           if-no-files-found: error
 
   publish:

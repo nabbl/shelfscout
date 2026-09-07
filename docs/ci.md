@@ -13,6 +13,8 @@ The `CI and GHCR` GitHub Actions workflow runs on pull requests to `main`, pushe
 
 All gates must pass before the publishing job starts. The publisher loads the exact checked image archives; it does not rebuild them. Third-party actions are pinned to commit SHAs and Dependabot checks for action updates weekly. Each job receives only its required token permissions; no personal access token, app credentials, or Arcane secret is needed by the workflow.
 
+The runtime image applies Debian updates and removes the global npm/npx installation, including its bundled dependencies. Build stages retain npm for installation and compilation. Start the runtime web and worker with their supplied Node commands, not `npm start` or `npm run worker` inside the container.
+
 Recommended required PR checks are `Application checks`, `Container checks (amd64)`, and `Container checks (arm64)`. Configure these in your branch rules if you want merges to require CI; the pipeline does not change repository protection settings.
 
 ## Published images
