@@ -8,7 +8,7 @@ Requirements: Node.js 22.13+.
 
 ```bash
 cp .env.example .env
-# Set a password hash (single-quoted), SESSION_SECRET, local DATA_DIR/SHELFSCOUT_DB paths, and optional model/BookOrbit connection.
+# Set a password hash (escape each $ as \$ for Next.js), SESSION_SECRET, local DATA_DIR/SHELFSCOUT_DB paths, and optional model/BookOrbit connection.
 npm ci
 npm run db:migrate
 npm run dev
@@ -16,11 +16,15 @@ npm run dev
 npm run worker
 ```
 
-Generate the owner password hash:
+Generate the owner password entry for local Next.js development and paste it into `.env`:
 
 ```bash
-node -e "require('bcryptjs').hash(process.argv[1],12).then(console.log)" 'your password'
+node -e 'require("bcryptjs").hash(process.argv[1],12).then(hash => console.log("OWNER_PASSWORD_HASH=" + hash.replaceAll("$", "\\$")))' 'your password'
 ```
+
+Next.js expands `$` references even inside quoted `.env` values, so quoting a bcrypt hash alone is insufficient: each `$` must be written as `\$`. `.env.local` takes precedence over `.env`; update or remove a duplicate entry there too, then restart the server. Container runtime environment variables should contain the original bcrypt hash, without Next.js-specific backslash escaping.
+
+For automatic BookOrbit login, set `BOOKORBIT_USERNAME` and `BOOKORBIT_PASSWORD` in `.env.local` alongside `BOOKORBIT_URL`. Alternatively set `BOOKORBIT_PASSWORD_FILE` to a plain-text password file; its contents are used literally (one trailing newline is removed). In `.env` passwords, escape literal `$` as `\$`. These credentials take precedence over `BOOKORBIT_TOKEN`; tokens are renewed automatically. `npm run worker` uses the same environment-file precedence as Next.js. Restart web and worker after configuration changes.
 
 Use `docker compose up --build` for the packaged deployment. The UI is at `http://localhost:3000`; `/api/health` is available for container checks. Both development and production refuse to create sessions unless `SESSION_SECRET` has at least 32 characters. Set `DEMO_MODE=true` only for the visibly labelled, non-live demonstration, and put a rate-limiting reverse proxy in front of an internet-exposed instance.
 

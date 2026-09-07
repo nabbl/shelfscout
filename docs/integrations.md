@@ -1,6 +1,6 @@
 # Shelfmark → BookOrbit acquisition
 
-Source verified on 2026-09-07. Automated verification uses mocked HTTP APIs and an original EPUB fixture. Installed Shelfmark/BookOrbit versions and live authentication have **not** been verified. Development did not acquire books, change Kobo settings, restart services, deploy, or push changes.
+Source verified on 2026-09-07. Acquisition verification uses mocked HTTP APIs and an original EPUB fixture; installed versions and live acquisition remain unverified. BookOrbit bearer authentication and read-only rating lookups were subsequently exercised successfully (see `docs/test-results.md`). Development did not acquire books, change Kobo settings, restart upstream services, deploy, or push changes.
 
 ## Source contracts and authentication
 
@@ -20,7 +20,7 @@ Verified Shelfmark contracts:
 - `GET /api/activity/snapshot` returns `{status:{[state]:{[taskId]:download}},...}`. The download includes `source`, `id`, `added_time` (epoch seconds) and an existing `download_path` when delivered. Terminal state is `complete`; error/cancelled states must not be imported.
 - `GET /api/activity/history?limit=100&offset=0` provides dismissed activity. Downloads appear under `snapshot.download`, with `final_status` on the outer item. The adapter reads both surfaces and paginates history. Snapshot persistence is limited upstream (200 recent records); absent or erased evidence stops for review, never triggers another POST.
 
-BookOrbit accepts an existing JWT using `Authorization: Bearer ...` (its browser can also use `access_token`). ShelfScout uses `BOOKORBIT_TOKEN`; obtain/renew it through your existing BookOrbit authentication setup. Required capabilities for this workflow: `book_request_access` for read-only ownership/legacy availability, `book_dock_access`, `manage_book_dock` for settings read/rescan and visibility of watched files, `library_upload` for finalization, `library_download` for imported-byte verification, access to the destination library/folder, and rights to the selected collection. ShelfScout does not grant permissions or change any Kobo settings.
+Configure `BOOKORBIT_USERNAME` and `BOOKORBIT_PASSWORD` (or `BOOKORBIT_PASSWORD_FILE`) for automatic server-side login. ShelfScout obtains an access JWT, renews it before expiry using BookOrbit’s rotating refresh cookie, and logs in again when the refresh session expires. Password login must be enabled in BookOrbit. Credentials take precedence over the optional legacy `BOOKORBIT_TOKEN`, which remains a manually renewed fallback. Web and worker keep separate sessions in memory; credentials and cookies are never returned to the browser. Required capabilities for this workflow: `book_request_access` for read-only ownership/legacy availability, `book_dock_access`, `manage_book_dock` for settings read/rescan and visibility of watched files, `library_upload` for finalization, `library_download` for imported-byte verification, access to the destination library/folder, and rights to the selected collection. ShelfScout does not grant permissions or change any Kobo settings.
 
 Verified BookOrbit routes (all prefixed `/api/v1`):
 
@@ -32,6 +32,12 @@ Verified BookOrbit routes (all prefixed `/api/v1`):
 - `GET /collections`; `POST /collections/:id/books` with `{bookIds:[id]}`; paginated membership `GET /collections/:id/books?page=0&size=100`. Read before write and after write; revalidate `syncToKobo`.
 
 Only configured upstream origins receive credentials; redirects are rejected. Upstream error bodies and release URLs are not exposed in Activity or logs. Persisted release payloads can contain signed upstream download URLs: treat the SQLite backup as private along with other application data.
+
+## Troubleshooting connection tests
+
+Settings shows progress and the result beside each connection button. These messages remain visible while recommendation polling runs. Shelfmark's test checks `/api/activity/snapshot`; leave `SHELFMARK_COOKIE` blank when authentication is disabled. A cookie is only required when the upstream instance requires a session.
+
+BookOrbit's test reads `/api/v1/book-dock/summary` and `/api/v1/collections`. ShelfScout returns HTTP 502 when either upstream request fails; the JSON `error` field identifies the failed endpoint and provides guidance. An upstream 401 means the JWT is missing, invalid or expired; 403 means insufficient permissions; 404 means the base URL or installed API version needs checking. Configure the application base URL (including any deployment subpath), without `/api/v1`. DNS and connection-refused errors refer to reachability **from ShelfScout**, which can differ from reachability in your browser. Tests perform no acquisitions or collection changes.
 
 ## Shared folder configuration
 
@@ -49,7 +55,8 @@ Set ShelfScout's environment:
 
 ```dotenv
 BOOKORBIT_URL=http://bookorbit:3000
-BOOKORBIT_TOKEN=<existing JWT>
+BOOKORBIT_USERNAME=<existing username>
+BOOKORBIT_PASSWORD=<existing password>
 BOOKORBIT_LIBRARY_ID=4
 BOOKORBIT_FOLDER_ID=5
 BOOKORBIT_DOCK_DIR=/book-dock
@@ -70,11 +77,11 @@ Required setup constraints for the inspected Book Dock contract:
 1. In Shelfmark, set **Folder** output and **Rename Only** or **None** file organization. Use a flat destination with single EPUB releases. No per-user subdirectories, packs or organized folders. All non-`covers` subdirectories and symlinks in incoming are rejected because Book Dock's API omits absolute paths/checksums and cannot prove which nested unit owns a filename.
 2. Disable Book Dock **auto-finalization** for this watched folder so ShelfScout can verify identity first. ShelfScout reads this flag and stops before download if enabled; it never changes it. Keep automatic metadata-file rewriting/other tools from changing completed bytes during acquisition. The operator makes any setup changes; development did not.
 3. Confirm BookOrbit's reported Book Dock path equals `BOOKORBIT_DOCK_DIR`, and all three mounts really reference the same host directory. Path strings in different containers do not by themselves prove this physical mapping.
-4. Test both connections in Settings and select an existing Kobo-enabled collection. Run the worker in addition to the web process.
+4. Test both connections in Settings. Get book also loads your Kobo-enabled collections directly, without requiring a prior connection test. Choose a collection in the request panel and supply the requested language when the catalog has none. A recorded request opens Activity; connection and validation errors remain visible in the panel. Run the worker in addition to the web process.
 
 ## Lifecycle, evidence and recovery
 
-Intent + job commit in one SQLite transaction before network work. New jobs first check ownership; an existing owned EPUB is strictly verified and added to the selected collection. If a BookOrbit Request already exists, continue following it rather than creating competing Shelfmark work. Otherwise search Shelfmark, prefer EPUB, and require exact title/author/language/ISBN evidence for automatic selection. Multiple compatible releases or missing edition evidence show an Activity release picker; incompatible known languages/formats/books/ISBNs cannot be selected. A missing release ISBN can be explicitly confirmed, but embedded and selected metadata must still match the requested ISBN before import. Correctly labelled releases with sparse or conflicting metadata may require review instead of automatic completion.
+Intent + job commit in one SQLite transaction before network work. New jobs first check ownership; an existing owned EPUB is strictly verified and added to the selected collection. If a BookOrbit Request already exists, continue following it rather than creating competing Shelfmark work. Otherwise search Shelfmark, prefer EPUB, and require exact title/author/language/ISBN evidence for automatic selection. Author matching recognizes surname-first credits and explicit co-author lists. Additional authors require manual release confirmation even when an ISBN matches; embedded/selected/library metadata uses the same author normalization. Shelfmark source categories such as `📕 book (fiction)` are accepted when the format is EPUB. Mismatches report the specific title, author, language, ISBN, format or pack constraint. Multiple compatible releases or missing edition evidence show an Activity release picker; incompatible known languages/formats/books/ISBNs cannot be selected. A missing release ISBN can be explicitly confirmed, but embedded and selected metadata must still match the requested ISBN before import. Correctly labelled releases with sparse or conflicting metadata may require review instead of automatic completion.
 
 Persist the full chosen release, globally reserve its upstream task ID, and write a download-attempt marker **before** POST. Persist its generation timestamp, completion path, baseline Dock IDs, local file size, SHA-256 and inode/time evidence. Wait for terminal `complete`, then stable repeated file observations at least five seconds apart. Require a unique new flat Dock ID, exact file size, EPUB format, no multi-file unit, and matching **embedded and selected** title/author/language/ISBN. Finalization uses only that ID after a clean preview and another read/hash check. Imported bytes and identity must match before any collection changes. Nested files, changed files, ambiguous IDs, old activity and unverifiable metadata stop at **Needs attention**.
 
@@ -97,6 +104,6 @@ Stages stop for review after 24 hours; recheck renews the observation window, no
 
 Before normal acquisition, verify installed versions against the source snapshots, session/JWT lifetime and permissions, source download policy, flat completed-folder delivery, physical host mounts, UID permissions, disabled auto-finalization, destination IDs and collection access. Then, when explicitly authorized, use a release you are entitled to download to exercise the full chain, including a worker restart and collection read-back. No such live acquisition was performed during implementation.
 
-## Recommendation sources (unchanged)
+## Recommendation and rating sources
 
-Open Library discovery remains server-side, bounded and cached. Goodreads averages imported from CSV remain snapshots with unknown measurement time; Amazon ratings remain unknown without a verified permitted provider. Neither source is scraped and ratings outages never block history or acquisition. Recommendation architecture is documented in [recommendation-system.md](recommendation-system.md).
+Open Library discovery remains server-side, bounded and cached. Goodreads averages imported from CSV remain snapshots with unknown measurement time. Live Goodreads/Amazon averages and counts now come from BookOrbit’s read-only metadata provider search, matched by title/author and cached with source URLs and retrieval dates. Enable those providers in BookOrbit and configure automatic login; see the recommendation guide for lookup and refresh behavior. Neither source is scraped and ratings outages never block history or acquisition. Recommendation architecture is documented in [recommendation-system.md](recommendation-system.md).

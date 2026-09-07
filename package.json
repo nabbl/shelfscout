@@ -13,13 +13,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:browser": "playwright test",
-    "db:migrate": "node --env-file-if-exists=.env --import tsx scripts/migrate.ts",
-    "worker": "node --env-file-if-exists=.env --import tsx server/worker.ts",
+    "db:migrate": "node --import tsx scripts/migrate.ts",
+    "worker": "node --import tsx server/worker.ts",
     "evaluate": "tsx scripts/evaluation/run.ts",
     "evaluate:heldout": "tsx scripts/evaluation/heldout.ts",
     "test:browser:live": "playwright test --config playwright.live.config.ts"
   },
   "dependencies": {
+    "@next/env": "16.3.4",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.2.0",
     "csv-parse": "^6.1.0",

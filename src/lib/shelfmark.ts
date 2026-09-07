@@ -1,3 +1,4 @@
+import { UpstreamHttpError, upstreamConnectionError } from './upstream-errors';
 import { configuredUpstreamUrl } from './security';
 import { languageCode } from './acquisition-identity';
 import type { BookCandidate } from './bookorbit';
@@ -10,15 +11,18 @@ export class ShelfmarkClient {
   private async call<T>(path: string, init: RequestInit = {}): Promise<T> {
     try {
       const r = await fetch(new URL(`${this.base.pathname.replace(/\/$/, '')}/api${path}`, this.base.origin), { ...init, headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(this.cookie ? { Cookie: this.cookie } : {}) }, redirect: 'error', signal: AbortSignal.timeout(60_000), cache: 'no-store' });
-      if (!r.ok) throw new Error(`Shelfmark HTTP ${r.status}. Check connection, session and download permissions.`);
+      if (!r.ok) throw new UpstreamHttpError('Shelfmark', path, r.status);
       return await r.json() as T;
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith('Shelfmark HTTP')) throw error;
-      throw new Error('Shelfmark connection timed out or returned an invalid response. Check the server and session.');
+      throw upstreamConnectionError('Shelfmark', error);
     }
   }
   health() { return this.call<unknown>('/health'); }
-  async test() { await this.call('/activity/snapshot'); return { authenticatedActivity: true }; }
+  async test() {
+    const snapshot = await this.call<{ status: unknown }>('/activity/snapshot');
+    if (!snapshot?.status || typeof snapshot.status !== 'object' || Array.isArray(snapshot.status)) throw new Error('Shelfmark activity contract is incompatible. Check the configured URL and installed version.');
+    return { activityAccessible: true };
+  }
   search(c: BookCandidate) {
     const params = new URLSearchParams({ provider: 'manual', book_id: c.isbn13 || 'shelfscout', title: c.title, author: c.author || '', languages: languageCode(c.language), content_type: 'ebook' });
     return this.call<{ releases: Release[]; errors?: string[] }>(`/releases?${params}`);

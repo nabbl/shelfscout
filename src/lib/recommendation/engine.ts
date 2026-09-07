@@ -1,4 +1,6 @@
+import { queueRatingRefresh } from '../rating-refresh';
 import { normalize } from '../identity';
+import { withStoredRatings } from '../ratings';
 import { enrichHistory } from './history-evidence';
 import { randomUUID } from 'node:crypto';
 import type { ShelfDb } from '../db';
@@ -32,7 +34,9 @@ export function batchState(db: ShelfDb) {
         workKey: string;
         catalogKey: string;
     }) => { const keys = [b.workKey, b.catalogKey, ...(context.aliases.get(b.catalogKey) || [])]; return !keys.some(k => context.dismissed.has(k) || context.deferred.has(k) || context.saved.has(k) || context.requested.has(k) || (!context.rereads && context.known.has(k))); });
-    return { active, last: { id: last.id, ...result, completedAt: last.completed_at } };
+    result.items = result.items.map((item: import('./rank').RankedCandidate) => withStoredRatings(db, item));
+    const ratingsJob = db.prepare("SELECT status,last_error FROM jobs WHERE type='ratings' AND json_extract(payload_json,'$.id')=? ORDER BY created_at DESC LIMIT 1").get(last.id);
+    return { active, ratingsJob, last: { id: last.id, ...result, completedAt: last.completed_at } };
 }
 export function rankContext(db: ShelfDb, input: BatchInput): RankContext {
     const feedback = activeFeedback(db);
@@ -162,11 +166,11 @@ export async function generateBatch(db: ShelfDb, id: string) {
                 }
             }
         const ranked = rankPool(enriched, profile, context, assessments);
-        const items = selectBatch(ranked);
+        const items = selectBatch(ranked).map(item => withStoredRatings(db, item));
         const result = { items, profile, strategies, warnings: [...new Set(warnings)], rankingAdapter: aiStages ? 'AI-assisted with validated evidence (see stage warnings)' : 'deterministic evidence fallback', diagnostics: { catalogPool: byKey.size, eligible: eligible.size, assessed: enriched.length, modelAssessed: assessments.length, selected: items.length }, mood: input.mood, mode: input.mode };
         const now = new Date().toISOString();
         db.transaction(() => { db.prepare("UPDATE recommendation_batches SET status='complete',stage='Complete',result_json=?,completed_at=? WHERE id=?").run(JSON.stringify(result), now, id); for (const b of items)
-            db.prepare('INSERT OR IGNORE INTO recommendation_exposures VALUES(?,?,?,?,?)').run(id, b.workKey, b.catalogKey, b.author, now); })();
+            db.prepare('INSERT OR IGNORE INTO recommendation_exposures VALUES(?,?,?,?,?)').run(id, b.workKey, b.catalogKey, b.author, now); if (process.env.BOOKORBIT_URL && items.length) queueRatingRefresh(db, id); })();
     }
     catch (error) {
         db.prepare("UPDATE recommendation_batches SET status='failed',stage='Failed; last successful batch retained',error=? WHERE id=?").run(error instanceof Error ? error.message : 'Recommendation job failed', id);

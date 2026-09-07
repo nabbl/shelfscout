@@ -24,7 +24,7 @@ for (const mood of ['', 'adventure'])
 for (const d of docs)
     cache(`work-v2:${d.key}`, { key: d.key, title: d.title, description: 'A synthetic fixture story about memory.', subjects: ['memory'] });
 db.close();
-const env = { ...process.env, DEMO_MODE: 'false', SHELFSCOUT_DB: filename, DATA_DIR: dir, OWNER_PASSWORD_HASH: bcrypt.hashSync('browser-test-password', 4), SESSION_SECRET: 'isolated-browser-test-session-secret-at-least-32-characters', MODEL_NAME: '', MODEL_BASE_URL: '', MODEL_API_KEY: '', BOOKORBIT_URL: '', BOOKORBIT_TOKEN: '', SHELFMARK_URL: '' };
+const env = { ...process.env, DEMO_MODE: 'false', SHELFSCOUT_DB: filename, DATA_DIR: dir, OWNER_PASSWORD_HASH: bcrypt.hashSync('browser-test-password', 4), SESSION_SECRET: 'isolated-browser-test-session-secret-at-least-32-characters', MODEL_NAME: '', MODEL_BASE_URL: '', MODEL_API_KEY: '', BOOKORBIT_URL: '', BOOKORBIT_TOKEN: '', BOOKORBIT_USERNAME: '', BOOKORBIT_PASSWORD: '', BOOKORBIT_PASSWORD_FILE: '', SHELFMARK_URL: '' };
 const children = [spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--port', '3102'], { stdio: 'inherit', env }), spawn(process.execPath, ['--import', 'tsx', 'server/worker.ts'], { stdio: 'inherit', env })];
 let closing = false;
 function stop() { if (closing)

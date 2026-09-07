@@ -11,7 +11,7 @@ Set these in Arcane's Environment editor:
 - `OWNER_PASSWORD_HASH`: bcrypt hash, single-quoted to preserve dollar signs.
 - `SESSION_SECRET`: at least 32 random characters.
 - `MODEL_BASE_URL`, `MODEL_NAME`, `MODEL_API_KEY`: your existing provider configuration; the API key can be empty for an unauthenticated local provider.
-- `BOOKORBIT_URL`, `BOOKORBIT_TOKEN`: an existing bearer JWT with the capabilities listed in [integration setup](integrations.md).
+- `BOOKORBIT_URL`, `BOOKORBIT_USERNAME`, `BOOKORBIT_PASSWORD`: an existing account for automatic login and token renewal with the capabilities listed in [integration setup](integrations.md). `BOOKORBIT_TOKEN` remains an optional manually renewed fallback.
 - `BOOKORBIT_LIBRARY_ID` and `BOOKORBIT_FOLDER_ID`: the final library and its folder, not the Book Dock staging directory.
 - `BOOKORBIT_DOCK_DIR`: actual BookOrbit container-side Book Dock path, e.g. `/book-dock`.
 - `SHELFMARK_URL`, `SHELFMARK_COOKIE`: reachable instance and existing authenticated session cookie. Shelfmark is required for new unowned acquisitions.

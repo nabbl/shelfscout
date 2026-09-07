@@ -1,10 +1,14 @@
+import { withStoredRatings } from "@/src/lib/ratings";
 import { z } from 'zod';
 import { getDb } from '@/src/lib/db';
 import { requireCsrf, requireOwnerApi } from '@/src/lib/auth';
 import { activeFeedback } from '@/src/lib/recommendation/profile';
 const schema = z.object({ workKey: z.string().min(16).max(128), action: z.enum(['already_read', 'not_interested', 'not_now', 'saved', 'get_book']), reason: z.string().max(500).optional() });
 export async function GET() { const auth = await requireOwnerApi(); if (auth)
-    return auth; return Response.json({ items: activeFeedback(getDb()) }, { headers: { 'Cache-Control': 'private, no-store' } }); }
+    return auth; return Response.json({ items: activeFeedback(getDb()).map(item => {
+      const candidate = JSON.parse(item.candidate_json || '{}');
+      return candidate.workKey && candidate.ratings ? { ...item, candidate_json: JSON.stringify(withStoredRatings(getDb(), candidate)) } : item;
+    }) }, { headers: { 'Cache-Control': 'private, no-store' } }); }
 export async function POST(request: Request) { const auth = await requireOwnerApi(); if (auth)
     return auth; const csrf = await requireCsrf(); if (csrf)
     return csrf; const parsed = schema.safeParse(await request.json().catch(() => null)); if (!parsed.success)

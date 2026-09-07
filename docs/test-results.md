@@ -1,5 +1,51 @@
 # Verification results
 
+## 2026-09-07 — Shelfmark release identity compatibility
+
+- Reproduced two false negatives from the saved Nightfall results: surname-first co-author strings and Shelfmark's preserved `📕 book (fiction)` category were rejected by literal comparisons.
+- Added author-credit normalization consistently across release selection and subsequent metadata verification. Additional credits remain explicit choices, and title/language/ISBN/EPUB/pack checks still apply. Rejection reasons now identify the conflicting field.
+- `npm test`: 111 passed, including eleven identity regression cases and a mocked lifecycle from manual co-author release selection through import verification. Typecheck, lint and diff checks passed.
+- Reassessed the existing Nightfall results: eight releases are selectable; the reported 2010 EPUB is selectable but requires confirmation. Restarted the idle local worker and queued a search recheck for Nightfall. No release was selected or download submitted by the assistant.
+
+## 2026-09-07 — Get book request panel
+
+- Fixed hidden acquisition feedback: Get book now opens an accessible modal from cards and details, loads Kobo collections without requiring a Settings test, permits explicit language selection when catalog language is unknown, and opens Activity after recording the request. Loading/error states persist independently of recommendation polling. Concurrent submits are blocked; uncertain responses offer Activity without automatic replay.
+- Six new desktop/mobile browser checks passed with mocked integration/submission responses: direct collection selection, pending state, navigation after submission, missing language, connection retry, persistent validation errors and lost-response handling. Four existing Activity and owner/CSRF checks also passed. No live acquisition was submitted.
+- Lint, typecheck and isolated production build passed. The mobile request-panel screenshot was visually inspected. The user's dev server was not restarted.
+
+## 2026-09-07 — BookOrbit automatic login and renewal
+
+- `npm test`: 99 passed in 15 files. Fourteen auth cases cover concurrent login/renewal, simulated access expiry, rotating refresh cookies, expired refresh sessions, lost refresh responses, bounded HTTP 401 retries, no mutation replay on other failures, login cooldowns, manual-token compatibility and password files. An additional worker environment regression checks `.env.local`, escaped dollar signs and runtime credentials without environment files.
+- Lint, typecheck and an isolated production build passed. The existing npm 10 lockfile repair is preserved; the new direct `@next/env` dependency uses the already locked Next.js version.
+- Twelve isolated desktop/mobile browser checks passed for Settings, Goodreads import, ratings display/refresh and owner/CSRF boundaries. Upstream responses were mocked.
+- The worker now loads environment files like Next.js; its loader is included in the runtime image. The existing local worker was restarted while idle; the user's web server was left running.
+- Live password login/refresh has not been verified: no BookOrbit username/password has been configured locally yet. The earlier live ratings results below used a manual access token. No acquisition, library mutation or deployment was performed.
+
+## 2026-09-07 — Live BookOrbit rating lookup
+
+- `npm test`: 84 passed. Coverage includes fragmented SSE parsing, response limits, title/author/ISBN matching, source URL validation, both providers, cache reuse, preservation of old ratings after failures, disabled providers, authentication errors and deduplicated jobs.
+- Recommendation display browser checks: four passed on desktop/mobile, including queueing Refresh ratings and displaying polled provider values/source links. Two additional owner/CSRF checks passed.
+- Lint, typecheck and production build passed, including `/api/recommendations/ratings`.
+- Live verification with the owner's renewed BookOrbit access token: both providers enabled; a Piranesi lookup returned Goodreads 4.20 / 573,387 ratings and Amazon 4.40 / 48,034 ratings. The current nine-book batch completed its separate ratings job with six matched Goodreads and six matched Amazon ratings; each provider had three unmatched/missing ratings. No acquisition or library metadata mutation was performed.
+- The tested BookOrbit access token has a fifteen-minute lifetime. Cached ratings persist after token expiry. This manual-token check preceded the automatic renewal implementation recorded above.
+
+## 2026-09-07 — Recommendation copy and rating display
+
+- `npm test`: 77 passed. New checks cover book-specific model explanations, retained evidenced tradeoffs, imported Goodreads averages on existing batches, resolved aliases, ambiguous identity withholding and unavailable zero averages.
+- `npm run test:browser:live -- tests/browser-live/recommendation-display.spec.ts`: two passed, desktop and mobile, using an isolated fixture. Confirmed numeric CSV ratings, provenance, Amazon review links, removal of saved boilerplate and retention of specific caveats.
+- Lint, typecheck and production build passed. No live rating provider was added; Goodreads numbers come only from matched CSV snapshots and Amazon remains unavailable without a provider.
+
+## 2026-09-07 — Settings import and connection feedback
+
+- `npm test`: 72 passed, including cookie-free Shelfmark access and sanitized connection diagnostics.
+- `npm run test:browser:live -- tests/browser-live/settings.spec.ts`: six passed across desktop and mobile in an isolated source copy/database. Verified delayed CSRF retrieval followed by real CSV preview/commit into fixture History, persistent connection feedback during recommendation polling, and retryable JSON/HTML/network failures. Upstream connections were mocked.
+- `npm run lint`, `npm run typecheck`, `npm run build`, and `git diff --check`: passed.
+- Local development server health endpoint: HTTP 200 with database status `ok`; a separate local worker was started.
+
+The Goodreads handler now captures FormData before yielding. Connection tests report progress/results in Settings rather than writing to Discover's polling-controlled notice. Shelfmark still omits the Cookie header when unconfigured and verifies the activity response shape. BookOrbit diagnostics identify HTTP endpoint failures and common network errors without exposing upstream bodies or credentials. The production BookOrbit 502 cause remains unverified pending its response body/configuration; no live integration credentials were available in this checkout.
+
+## 2026-09-06 — Initial verification
+
 Run locally on 2026-09-06 with Node.js 25.2.1 and npm 11.6.2.
 
 - `npm test`: passed — 5 files, 7 tests.

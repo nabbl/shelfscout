@@ -20,6 +20,7 @@ export interface Candidate {
             status: string;
             url: string;
             freshness: string;
+            message?: string;
         };
         amazon: {
             rating: number | null;
@@ -27,6 +28,7 @@ export interface Candidate {
             status: string;
             url: string;
             freshness: string;
+            message?: string;
         };
     };
 }

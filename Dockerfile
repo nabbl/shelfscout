@@ -21,6 +21,7 @@ COPY --from=builder --chown=shelfscout:shelfscout /app/.next/static ./.next/stat
 COPY --from=builder --chown=shelfscout:shelfscout /app/public ./public
 COPY --from=builder --chown=shelfscout:shelfscout /app/db ./db
 COPY --from=builder --chown=shelfscout:shelfscout /app/server ./server
+COPY --from=builder --chown=shelfscout:shelfscout /app/scripts/load-env.ts ./scripts/load-env.ts
 COPY --from=builder --chown=shelfscout:shelfscout /app/src ./src
 COPY --from=builder --chown=shelfscout:shelfscout /app/node_modules ./node_modules
 COPY --from=builder --chown=shelfscout:shelfscout /app/package.json ./package.json

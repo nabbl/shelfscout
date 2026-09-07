@@ -116,6 +116,27 @@ describe('Shelfmark → Book Dock → Kobo lifecycle', () => {
     expect(metadataMatches(candidate, { ...metadata, language: null })).toBe(false);
     expect(metadataMatches(candidate, { ...metadata, isbn13: null })).toBe(false);
   });
+  it('confirms co-author credits explicitly and verifies reordered metadata through import', async () => {
+    const { h, start, step, deliver } = setup();
+    h.releases[0].extra.author = 'Writer, Test; Collaborator, Another';
+    h.releases[0].content_type = '📕 book (fiction)';
+    h.book.authors = ['Writer, Test', 'Collaborator, Another'];
+    const originalDockFile = h.dockFile;
+    h.dockFile = () => {
+      const file = originalDockFile();
+      file.embeddedMetadata.authors = ['Writer, Test; Collaborator, Another'];
+      file.selectedMetadata.authors = ['Writer, Test', 'Collaborator, Another'];
+      return file;
+    };
+    await start(); await step(); await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('needs_attention');
+    expect(publicAcquisitions(h.db)[0].releases[0].selectable).toBe(true);
+    expect(h.downloadPosts).toBe(0);
+    updateAcquisition(h.db, h.id, 'select_release', 0);
+    await step(); await step(); await deliver(); await step(); await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('ready_for_kobo');
+    expect(h.downloadPosts).toBe(1); expect(h.importPosts).toBe(1);
+  });
   it('reconciles a download timeout by durable source ID across database reopen without resubmitting', async () => {
     const { h, queueDownload, step, deliver } = setup(true); h.downloadTimeout = true;
     await queueDownload(); expect(acquisition(h.db, h.id)!.status).toBe('submission_uncertain');
