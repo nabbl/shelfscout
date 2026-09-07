@@ -81,7 +81,11 @@ function downloadDestination() {
 }
 function validateDockFile(c: BookCandidate, file: DockFile, evidence: FileEvidence) {
   if (file.status !== 'ready' || file.fileName !== evidence.name || file.fileSize !== evidence.size || file.format?.toLowerCase() !== 'epub' || !Array.isArray(file.unitFiles) || file.unitFiles.length) throw new Error('Book Dock file evidence changed or represents a multi-file unit. Review this entry.');
-  if (!metadataMatches(c, file.embeddedMetadata) || !metadataMatches(c, file.selectedMetadata)) throw new Error('Embedded or selected Book Dock metadata does not match the requested title, author, language and ISBN. Review this file before import.');
+  if (!metadataMatches(c, file.embeddedMetadata)) throw new Error('Embedded EPUB metadata does not match the requested title, author, language and ISBN. Review this file before import.');
+  // BookOrbit's public finalize API uses selectedMetadata ?? embeddedMetadata.
+  // A ready file without manual metadata selection is valid; fetched metadata
+  // and its confidence score do not replace this API's effective metadata.
+  if (!metadataMatches(c, file.selectedMetadata ?? file.embeddedMetadata)) throw new Error('Selected Book Dock metadata does not match the requested title, author, language and ISBN. Review this file before import.');
 }
 async function reconcileLegacy(db: Database.Database, row: Acquisition, bo: BookOrbitClient) {
   if (row.upstream_book_id) return finishCollections(db, row, bo);

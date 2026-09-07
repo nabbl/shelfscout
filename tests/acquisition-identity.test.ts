@@ -1,10 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { metadataMatches, releaseAssessment } from '../src/lib/acquisition-identity';
+import { languageCode, metadataMatches, releaseAssessment } from '../src/lib/acquisition-identity';
 
 const book = { title: 'Nightfall', author: 'Isaac Asimov', language: 'en', isbn13: null };
 const release = { title: 'Nightfall', source: 'direct_download', source_id: 'fixture', language: 'en', format: 'epub', content_type: '📕 book (fiction)', extra: { author: 'Asimov, Isaac; Silverberg, Robert' } };
 
 describe('acquisition author credits', () => {
+  it.each(['en-US', 'en-GB', 'en_US', 'eng-US'])('recognizes %s as English in release, embedded and library metadata', language => {
+    expect(languageCode(language)).toBe('en');
+    expect(metadataMatches(book, { title: book.title, authors: ['Isaac Asimov'], language })).toBe(true);
+    expect(releaseAssessment(book, { ...release, language }).selectable).toBe(true);
+  });
+  it('normalizes regional and script tags without matching different or unknown languages', () => {
+    expect(languageCode('pt_BR')).toBe('pt');
+    expect(languageCode('zh-Hant-TW')).toBe('zh');
+    for (const language of ['de-DE', 'fr-CA', 'und', null, '']) expect(metadataMatches(book, { title: book.title, authors: ['Isaac Asimov'], language })).toBe(false);
+  });
   it('allows surname-first co-author credits for explicit selection', () => {
     expect(releaseAssessment(book, release)).toMatchObject({ selectable: true, exact: false, reason: expect.stringContaining('additional authors') });
     // Additional credits still need confirmation even with matching ISBN evidence.

@@ -3,7 +3,14 @@ import type { BookCandidate } from './bookorbit';
 import type { Release } from './shelfmark';
 
 const languageAliases: Record<string, string> = { eng: 'en', english: 'en', deu: 'de', ger: 'de', german: 'de', deutsch: 'de', fra: 'fr', fre: 'fr', french: 'fr', spa: 'es', spanish: 'es', ita: 'it', italian: 'it', por: 'pt', nld: 'nl', dut: 'nl', jpn: 'ja', zho: 'zh', chi: 'zh', rus: 'ru' };
-export const languageCode = (value: unknown) => { const n = normalize(typeof value === 'string' ? value : ''); return languageAliases[n] || n; };
+export const languageCode = (value: unknown) => {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  // EPUB metadata commonly uses regional/script tags (en-US, pt_BR, zh-Hant).
+  // Acquisition language preferences select a language, not a locale.
+  const tag = /^([a-z]{2,3})(?:[-_][a-z0-9]{2,8})+$/.exec(raw);
+  const n = tag?.[1] || normalize(raw);
+  return languageAliases[n] || n;
+};
 
 // Semicolons/explicit conjunctions separate credits; a comma within a credit
 // denotes "surname, given names". Never match by surname or substring alone.

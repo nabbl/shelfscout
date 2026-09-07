@@ -447,6 +447,24 @@ describe('Shelfmark → Book Dock → Kobo lifecycle', () => {
     expect(await step()).toBe(true); expect(acquisition(h.db, h.id)!.status).toBe('awaiting_import');
     h.dock = [h.dockFile()]; await step(); expect(h.importPosts).toBe(1);
   });
+  it('automatically finalizes a ready regional-language EPUB without manual metadata selection', async () => {
+    const { h, queueDownload, deliver, step } = setup();
+    h.book.language = 'en-US';
+    await queueDownload(); await deliver();
+    h.dock[0].embeddedMetadata = { ...metadata, language: 'en-US' };
+    h.dock[0].selectedMetadata = null;
+    await step(); await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('ready_for_kobo');
+    expect(h.importPosts).toBe(1); expect(h.collectionPosts).toBe(1);
+  });
+  it('does not ignore conflicting manual metadata when embedded metadata matches', async () => {
+    const { h, queueDownload, deliver, step } = setup();
+    await queueDownload(); await deliver();
+    h.dock[0].selectedMetadata = { ...metadata, language: 'de-DE' };
+    await step();
+    expect(acquisition(h.db, h.id)!.last_error).toContain('Selected Book Dock metadata');
+    expect(h.importPosts).toBe(0);
+  });
   it.each(['destination_conflict', 'duplicate', 'access_denied'])('stops a %s finalization preview', async status => {
     const { h, queueDownload, deliver, step } = setup(); await queueDownload(); await deliver(); h.previewStatus = status;
     await step(); expect(h.importPosts).toBe(0); expect(acquisition(h.db, h.id)!.status).toBe('needs_attention');
