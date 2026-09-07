@@ -1,6 +1,6 @@
 # ShelfScout
 
-ShelfScout is a private, self-hosted book-discovery companion. It imports Goodreads history, finds real candidates through Open Library, explains inspectable fit/caveat evidence, and follows a BookOrbit Request until an eligible EPUB is confirmed in an existing Kobo-synced collection.
+ShelfScout is a private, self-hosted book-discovery companion. It imports Goodreads history, finds real candidates through Open Library, explains inspectable fit/caveat evidence, and orchestrates Shelfmark release search/download followed by verified BookOrbit Book Dock import and Kobo collection membership. Existing BookOrbit Requests continue to reconcile.
 
 ## Start locally
 
@@ -48,4 +48,4 @@ npm run test:browser:live
 npm run evaluate
 ```
 
-See [integration evidence](docs/integrations.md), the [implemented plan](docs/implementation-plan.md), and the [recorded verification results](docs/test-results.md). A live acquisition requires an authorized BookOrbit URL/JWT and an owner-selected existing Kobo-synced collection. Setup and tests never perform live acquisition or collection changes.
+See [integration evidence](docs/integrations.md), the [implemented plan](docs/implementation-plan.md), and the [recorded verification results](docs/test-results.md). A live acquisition requires BookOrbit and Shelfmark credentials, an explicit library/folder target, a shared incoming directory, and an existing Kobo-enabled collection. Follow the [acquisition setup and recovery guide](docs/integrations.md) and [Arcane setup](docs/arcane.md). Setup and tests never perform live acquisition or collection changes.

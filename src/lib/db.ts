@@ -13,6 +13,7 @@ export function createDatabase(filename = process.env.SHELFSCOUT_DB || path.join
     const migration = fs.readFileSync(path.join(process.cwd(), "db/migrations/0001_initial.sql"), "utf8");
     db.exec(migration);
     db.exec(fs.readFileSync(path.join(process.cwd(), "db/migrations/0002_recommendations.sql"), "utf8"));
+    db.exec(fs.readFileSync(path.join(process.cwd(), "db/migrations/0003_shelfmark_acquisitions.sql"), "utf8"));
     db.pragma("optimize");
     return db;
 }

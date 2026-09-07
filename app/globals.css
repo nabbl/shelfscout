@@ -11,3 +11,10 @@
 @media(max-width:700px){.topbar .live-pill,.topbar .demo-pill{display:inline-flex;font-size:9px}.topbar .search:has(input:disabled){display:none}}
 @media(max-width:900px){.mood-row{overflow:visible;flex-wrap:wrap;gap:12px}.mood-row>div{min-width:0;flex-wrap:wrap}.mood-row .tune{display:inline-flex}.search input{display:block}.search{width:min(230px,45vw)}}
 @media(max-width:620px){.section-heading>button{font-size:12px;padding:10px 0}.mood-row button:nth-of-type(2){display:inline-flex}}
+
+.acquisition-item { padding: 1.4rem 0; border-bottom: 1px solid #ddd8d1; overflow-wrap: anywhere; }
+.acquisition-item fieldset { margin: 1rem 0; border: 1px solid #ddd8d1; border-radius: 12px; min-width: 0; }
+.release-choice { padding: 1rem; border-bottom: 1px solid #eee9e3; }
+.acquisition-item button { padding: .6rem .9rem; border: 1px solid #ccc6be; border-radius: 8px; background: #fff; margin: .5rem 0; }
+.acquisition-item button:disabled, .card-actions button:disabled { opacity: .55; cursor: default; }
+.acquisition-item details { margin-top: 1rem; }

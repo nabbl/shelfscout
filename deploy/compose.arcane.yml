@@ -4,7 +4,7 @@ x-shelfscout: &shelfscout
   image: shelfscout:local
   build:
     # Local checkout by default; Arcane can use a Git URL here via its .env editor.
-    context: ${SHELFSCOUT_BUILD_CONTEXT:-https://github.com/nabbl/shelfscout.git#codex/arcane-setup}
+    context: ${SHELFSCOUT_BUILD_CONTEXT:-https://github.com/nabbl/shelfscout.git#main}
     dockerfile: Dockerfile
   env_file:
     - path: .env
@@ -34,9 +34,22 @@ services:
   worker:
     <<: *shelfscout
     command: ["node", "--import", "tsx", "server/worker.ts"]
+    environment:
+      NODE_ENV: production
+      DEMO_MODE: "false"
+      DATA_DIR: /data
+      SHELFSCOUT_DB: /data/shelfscout.sqlite
+      # Fixed worker-side path; only the worker needs completed-file access.
+      SHELFSCOUT_INCOMING_DIR: /incoming
+    volumes:
+      - shelfscout-data:/data
+      # Set an absolute existing host directory shared with Shelfmark and BookOrbit.
+      # The empty fallback keeps recommendation-only installations working.
+      - ${SHELFSCOUT_INCOMING_HOST_DIR:-shelfscout-incoming-unconfigured}:/incoming:ro
     depends_on:
       web:
         condition: service_healthy
 
 volumes:
+  shelfscout-incoming-unconfigured:
   shelfscout-data:
