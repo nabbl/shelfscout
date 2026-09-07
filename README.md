@@ -26,6 +26,8 @@ Use `docker compose up --build` for the packaged deployment. The UI is at `http:
 
 For private HTTPS access, see [Tailscale / DockTail setup](docs/tailscale.md), including a gitignored Compose override and private Arcane configuration.
 
+For prebuilt amd64/arm64 images and Arcane GitOps, see [CI / GHCR setup](docs/ci.md). GitHub Actions checks the app and containers before publishing to `ghcr.io/nabbl/shelfscout` and updating a digest-pinned deployment branch.
+
 ## Data boundaries
 
 - The original Goodreads CSV is private under `DATA_DIR/imports`; raw columns are preserved and import never triggers acquisition.

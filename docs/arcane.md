@@ -1,5 +1,7 @@
 # Arcane setup
 
+**For prebuilt GHCR images and GitOps, use [CI / GHCR setup](ci.md).** The pipeline maintains a digest-pinned `compose.yml` on `codex/ghcr-deploy`; the source-build instructions below remain available as an alternative.
+
 For private HTTPS access using DockTail labels in Arcane's saved configuration, see [Tailscale / DockTail setup](tailscale.md). No deployment-specific labels need to be committed to the public base Compose files.
 
 The Arcane project uses `deploy/compose.arcane.yml`. The checkout was clean on `main` and fast-forwarded from `cd8deb6` to `e6fcff0` before the acquisition change. The previous `codex/arcane-setup` branch still exists, but its setup is already present on main. The Compose default now builds `https://github.com/nabbl/shelfscout.git#main`; pin a reviewed commit for reproducible deployment. Remote builds use the published revision on `main`; pin the reviewed acquisition commit before deploying. Publishing source does not deploy the application. No deploy or service restart was performed.

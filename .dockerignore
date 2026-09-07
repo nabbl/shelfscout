@@ -10,3 +10,7 @@ npm-debug.log
 outputs
 test-results
 docs/evaluation
+compose.override.yml
+compose.override.yaml
+compose.*.local.yml
+compose.*.local.yaml
