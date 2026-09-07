@@ -1,12 +1,11 @@
 import type Database from 'better-sqlite3';
 import path from 'node:path';
-import { acquisition, flow, normalizeStatus, recordStatus, type Acquisition, type Flow } from './acquisition';
+import { acquisition, flow, normalizeStatus, recordStatus, type Acquisition, type Flow, type AcquisitionEvidence as Evidence } from './acquisition';
 import { BookOrbitClient, type BookCandidate, type DockFile } from './bookorbit';
 import { ShelfmarkClient, type Release } from './shelfmark';
 import { metadataMatches, releaseAssessment } from './acquisition-identity';
 import { checkIncomingDirectory, incomingEvidence, sameFile, type FileEvidence } from './acquisition-files';
 
-type Evidence = { baselineDockIds: number[]; file?: FileEvidence; taskAddedTime?: number };
 function sameSubmissionTime(saved: number, current: number) {
   // Shelfmark exposes time.time() for active tasks, but persists queued_at with
   // seconds precision. Terminal snapshot/history entries therefore lose fractions.
@@ -22,6 +21,7 @@ function phase(db: Database.Database, id: string, value: string, status = value)
 }
 function setBook(db: Database.Database, id: string, bookId: number) {
   db.prepare('UPDATE acquisitions SET upstream_book_id=? WHERE id=?').run(String(bookId), id);
+  db.prepare("UPDATE acquisition_flows SET evidence_json=json_remove(evidence_json,'$.retryRequestedAt') WHERE acquisition_id=?").run(id);
   phase(db, id, 'available', 'available_in_bookorbit');
 }
 async function verifyBook(bo: BookOrbitClient, c: BookCandidate, bookId: string, f?: Flow) {
@@ -31,8 +31,8 @@ async function verifyBook(bo: BookOrbitClient, c: BookCandidate, bookId: string,
   const epubs = files.filter(file => file.format?.toLowerCase() === 'epub');
   if (!epubs.length) throw new Error('BookOrbit has no verified EPUB for this book.');
   const evidence = f?.evidence_json ? JSON.parse(f.evidence_json) as Evidence : undefined;
-  if (f?.import_attempted_at && evidence?.file) {
-    if (book.libraryId !== f.library_id) throw new Error('Imported book is in a different library. Review the Book Dock target.');
+  if (evidence?.file) {
+    if (book.libraryId !== f?.library_id) throw new Error('Imported book is in a different library. Review the Book Dock target.');
     let matched = false;
     for (const epub of epubs.filter(file => file.sizeBytes === evidence.file!.size)) {
       const digest = await bo.fileDigest(epub.id);
@@ -103,6 +103,24 @@ async function reconcileLegacy(db: Database.Database, row: Acquisition, bo: Book
   recordStatus(db, row.id, status, status === 'needs_attention' ? 'Legacy BookOrbit request needs review in BookOrbit Requests; then Recheck here.' : `Legacy BookOrbit request: ${String(upstream.status)}`);
   return !['needs_attention', 'failed', 'cancelled', 'rejected'].includes(status);
 }
+/** Background recovery for blocked downloads/imports. Never resumes a failed phase. */
+export async function reconcileOwnedAcquisition(db: Database.Database, id: string, bo?: BookOrbitClient): Promise<boolean> {
+  const row = acquisition(db, id), f = flow(db, id);
+  if (!row || row.status !== 'needs_attention' || row.upstream_book_id || !f || !['track_download', 'await_import', 'import'].includes(f.phase)) return false;
+  try {
+    const client = bo || new BookOrbitClient();
+    const candidate = JSON.parse(f.candidate_json) as BookCandidate;
+    const available = await client.availability(candidate);
+    if (!available.ownedBookId) return false;
+    await verifyBook(client, candidate, String(available.ownedBookId), f);
+    setBook(db, id, available.ownedBookId);
+    return true;
+  } catch {
+    // Keep the actionable failure visible. A periodic ownership lookup must not
+    // replace it with transient connectivity errors or repeat download/import work.
+    return false;
+  }
+}
 /** One durable step. true requeues the same job; false completes it. */
 export async function reconcileAcquisition(db: Database.Database, id: string, adapters?: AcquisitionAdapters): Promise<boolean> {
   const row = acquisition(db, id);
@@ -114,6 +132,16 @@ export async function reconcileAcquisition(db: Database.Database, id: string, ad
     if (!f) return await reconcileLegacy(db, row, bo);
     const c = JSON.parse(f.candidate_json) as BookCandidate;
     if (row.upstream_book_id) return await finishCollections(db, row, bo, f);
+    if (f.phase === 'track_download' || f.phase === 'await_import') {
+      // Book Dock can be finalized externally, removing the incoming file. Check
+      // the library before depending on Shelfmark's path or the watched directory.
+      const available = await bo.availability(c);
+      if (available.ownedBookId) {
+        await verifyBook(bo, c, String(available.ownedBookId), f);
+        setBook(db, id, available.ownedBookId);
+        return true;
+      }
+    }
     if (deps.now() - Date.parse(f.phase_started_at) > 24 * 3600_000) return attention(db, id, 'This stage has waited over 24 hours. Review the upstream activity and folder mapping, then Recheck. No download will be repeated.');
     if (f.phase === 'checking_ownership') {
       const available = await bo.availability(c);
@@ -167,6 +195,11 @@ export async function reconcileAcquisition(db: Database.Database, id: string, ad
     }
     const evidence: Evidence = f.evidence_json ? JSON.parse(f.evidence_json) : { baselineDockIds: [] };
     if (f.phase === 'track_download' || f.phase === 'submit_download') {
+      const retryRequested = !!evidence.retryRequestedAt;
+      if (retryRequested) {
+        delete evidence.retryRequestedAt;
+        db.prepare('UPDATE acquisition_flows SET evidence_json=? WHERE acquisition_id=?').run(JSON.stringify(evidence), id);
+      }
       const activities = (await sm.activity()).filter(a => a.id === f.release_id);
       const activity = activities[0];
       if (activities.length > 1 || (activity && activity.source !== f.release_source)) return attention(db, id, 'Shelfmark source ID has conflicting activity. Review the saved release.');
@@ -176,12 +209,64 @@ export async function reconcileAcquisition(db: Database.Database, id: string, ad
       }
       if (typeof activity.added_time !== 'number' || !Number.isFinite(activity.added_time) || activity.added_time <= 0) return attention(db, id, 'Shelfmark activity has no valid submission timestamp. Review its history before continuing.');
       if (activity.added_time * 1000 < Date.parse(f.download_attempted_at!) - 5000) return attention(db, id, 'Shelfmark activity predates this submission. Review its history and check that both servers have synchronized clocks.');
-      if (evidence.taskAddedTime !== undefined && !sameSubmissionTime(evidence.taskAddedTime, activity.added_time)) return attention(db, id, 'Shelfmark activity belongs to a different submission generation. Review its history before continuing.');
+      const active = ['queued', 'resolving', 'locating', 'downloading'].includes(activity.state);
+      const failed = ['error', 'failed', 'cancelled'].includes(activity.state);
+      if (evidence.taskAddedTime !== undefined && !sameSubmissionTime(evidence.taskAddedTime, activity.added_time)) {
+        const retry = evidence.retry;
+        // In-memory retries reuse added_time. Restored tasks get a fresh time,
+        // while persisted terminal activity can still use the original queued_at.
+        const expectedRetry = retry && (retry.activeAddedTime !== undefined
+          ? sameSubmissionTime(retry.activeAddedTime, activity.added_time)
+          : (active || activity.state === 'complete' || retry.confirmed) && activity.added_time * 1000 >= Date.parse(retry.attemptedAt) - 5000 && activity.added_time * 1000 <= deps.now() + 5000);
+        if (!expectedRetry) return attention(db, id, 'Shelfmark activity belongs to a different submission generation. Review its history before continuing.');
+        retry!.activeAddedTime ??= activity.added_time;
+      }
       // Keep the first observation; replacing it with a rounded value would lose
       // evidence needed to reject a later, different fractional timestamp.
       evidence.taskAddedTime ??= activity.added_time;
+      if (evidence.retry && !evidence.retry.confirmed) {
+        // A transition out of the saved failure proves the retry took effect even
+        // after a lost response. An unchanged failure cannot prove another attempt.
+        if (active || activity.state === 'complete') evidence.retry.confirmed = true;
+        else {
+          if (deps.now() - Date.parse(evidence.retry.attemptedAt) > 10 * 60_000) return attention(db, id, 'Shelfmark retry outcome is still uncertain. Review the saved download in Shelfmark, then Recheck. Another retry will not be sent without evidence that the previous one took effect.');
+          return true;
+        }
+      }
       db.prepare('UPDATE acquisition_flows SET download_seen_at=?,evidence_json=? WHERE acquisition_id=?').run(new Date(deps.now()).toISOString(), JSON.stringify(evidence), id);
-      if (['error', 'failed', 'cancelled'].includes(activity.state)) return attention(db, id, 'Shelfmark download failed or was cancelled. Review or resume the saved release in Shelfmark, then Recheck.');
+      if (failed) {
+        if (retryRequested && activity.retry_available === true && !f.import_attempted_at) {
+          downloadDestination();
+          await validateDockSetup(bo);
+          await checkIncomingDirectory();
+          const available = await bo.availability(c);
+          if (available.ownedBookId) { setBook(db, id, available.ownedBookId); return true; }
+          if (available.existingRequestId) return attention(db, id, 'BookOrbit already has a request for this book. Review that request before retrying the Shelfmark download.');
+          const collections = await bo.collections();
+          const targets = db.prepare('SELECT collection_id FROM acquisition_targets WHERE acquisition_id=?').all(id) as { collection_id: string }[];
+          if (!targets.length || targets.some(t => !collections.some(collection => String(collection.id) === t.collection_id && collection.syncToKobo))) return attention(db, id, 'Choose an existing Kobo-enabled target collection before retrying.');
+          const baselineDockIds = (await bo.dockFiles()).map(file => file.id);
+          const savedEvidence = JSON.stringify(evidence);
+          const attemptedAt = new Date(deps.now()).toISOString();
+          evidence.baselineDockIds = baselineDockIds;
+          delete evidence.file;
+          evidence.retry = { attemptedAt, confirmed: false };
+          // Reserve this explicit retry before POST. Worker restarts and duplicate
+          // jobs reconcile it instead of repeating a possibly accepted request.
+          const reservedEvidence = JSON.stringify(evidence);
+          const reserved = db.prepare("UPDATE acquisition_flows SET evidence_json=?,phase_started_at=? WHERE acquisition_id=? AND evidence_json=? AND import_attempted_at IS NULL AND phase='track_download'").run(reservedEvidence, attemptedAt, id, savedEvidence).changes;
+          if (!reserved) return true;
+          recordStatus(db, id, 'submitting_download', 'Explicit retry of the saved Shelfmark download recorded.');
+          try {
+            await sm.retryDownload(activity.id);
+            evidence.retry.confirmed = true;
+            db.prepare('UPDATE acquisition_flows SET evidence_json=? WHERE acquisition_id=? AND evidence_json=?').run(JSON.stringify(evidence), id, reservedEvidence);
+            recordStatus(db, id, 'downloading', 'Shelfmark accepted the explicit download retry.');
+          } catch { recordStatus(db, id, 'submission_uncertain', 'Retry outcome unknown. Checking saved Shelfmark activity; the retry will not be repeated automatically.'); }
+          return true;
+        }
+        return attention(db, id, activity.retry_available === true ? 'Shelfmark download failed or was cancelled. Fix the issue in Shelfmark, then use Recheck / retry download to retry the saved release once.' : 'Shelfmark download failed or was cancelled and does not offer a retry for this release. Review it in Shelfmark, then Recheck.');
+      }
       if (activity.state !== 'complete') { recordStatus(db, id, 'downloading', 'Shelfmark is downloading or delivering the selected release.'); return true; }
       if (!activity.download_path) return attention(db, id, 'Shelfmark completed without an existing folder file. Check folder output and Book Dock auto-finalization; no file will be guessed.');
       evidence.file = await deps.evidence(activity.download_path);

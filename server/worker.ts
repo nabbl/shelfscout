@@ -2,8 +2,8 @@ import '../scripts/load-env';
 import { refreshBatchRatings } from "../src/lib/rating-refresh";
 import { claimJob } from "../src/lib/jobs";
 import { getDb } from "../src/lib/db";
-import { recoverAcquisitions, recordStatus } from "../src/lib/acquisition";
-import { reconcileAcquisition } from "../src/lib/acquisition-worker";
+import { recoverAcquisitions, recordStatus, queueOwnershipChecks, queueAcquisition } from "../src/lib/acquisition";
+import { reconcileAcquisition, reconcileOwnedAcquisition } from "../src/lib/acquisition-worker";
 import { generateBatch } from "../src/lib/recommendation/engine";
 const db = getDb();
 recoverAcquisitions(db);
@@ -20,6 +20,9 @@ async function tick() { const job = claim(); if (!job)
         await generateBatch(db, id);
     else if (job.type === "ratings")
         await refreshBatchRatings(db, id, force);
+    else if (job.type === "check_acquisition_ownership") {
+        if (await reconcileOwnedAcquisition(db, id)) queueAcquisition(db, id);
+    }
     else if (await reconcileAcquisition(db, id)) {
         db.prepare("UPDATE jobs SET status='queued',attempts=0,run_after=?,locked_at=NULL,updated_at=? WHERE id=? AND status='running' AND attempts=?").run(new Date(Date.now()+30000).toISOString(),new Date().toISOString(),job.id,job.attempts+1);
         return true;
@@ -35,7 +38,11 @@ catch (error) {
 finally {
     clearInterval(heartbeat);
 } return true; }
-async function main() { while (!stopping) {
+async function main() { let nextOwnershipCheck = 0; while (!stopping) {
+    if (Date.now() >= nextOwnershipCheck) {
+        queueOwnershipChecks(db);
+        nextOwnershipCheck = Date.now() + 5 * 60_000;
+    }
     if (!await tick())
         await new Promise(r => setTimeout(r, 1000));
 } }

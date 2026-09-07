@@ -4,7 +4,7 @@ import { languageCode } from './acquisition-identity';
 import type { BookCandidate } from './bookorbit';
 
 export interface Release { source: string; source_id: string; title: string; format?: string | null; language?: string | null; size?: string | null; size_bytes?: number | null; content_type?: string | null; extra?: Record<string, unknown>; download_url?: string | null; info_url?: string | null; }
-export interface DownloadActivity { id: string; source: string; state: string; download_path?: string | null; added_time?: number; }
+export interface DownloadActivity { id: string; source: string; state: string; download_path?: string | null; added_time?: number; retry_available?: boolean; }
 export class ShelfmarkClient {
   private base: URL;
   constructor(base = process.env.SHELFMARK_URL, private cookie = process.env.SHELFMARK_COOKIE) { this.base = configuredUpstreamUrl(base, 'Shelfmark'); }
@@ -30,6 +30,10 @@ export class ShelfmarkClient {
   async download(release: Release) {
     const result = await this.call<{ status: string }>('/releases/download', { method: 'POST', body: JSON.stringify(release) });
     if (result.status !== 'queued') throw new Error('Shelfmark submission outcome is unknown. Recheck activity before any manual retry.');
+  }
+  async retryDownload(id: string) {
+    const result = await this.call<{ status: string; book_id: string }>(`/download/${encodeURIComponent(id)}/retry`, { method: 'POST' });
+    if (result.status !== 'queued' || result.book_id !== id) throw new Error('Shelfmark retry outcome is unknown. Recheck activity before any manual retry.');
   }
   async activity(): Promise<DownloadActivity[]> {
     const snapshot = await this.call<{ status: Record<string, Record<string, Omit<DownloadActivity, 'state'>>> }>('/activity/snapshot');

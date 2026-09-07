@@ -4,6 +4,15 @@ import type { BookCandidate } from './bookorbit';
 import { editionKey, workKey } from './identity';
 import { languageCode, releaseAssessment } from './acquisition-identity';
 import type { Release } from './shelfmark';
+import type { FileEvidence } from './acquisition-files';
+
+export interface AcquisitionEvidence {
+  baselineDockIds: number[];
+  file?: FileEvidence;
+  taskAddedTime?: number;
+  retryRequestedAt?: string;
+  retry?: { attemptedAt: string; confirmed: boolean; activeAddedTime?: number };
+}
 
 export interface Acquisition { id: string; title: string; author: string | null; isbn13: string | null; language: string; status: string; upstream_request_id: string | null; upstream_book_id: string | null; target_collection_id: string | null; last_error: string | null; }
 export interface Flow { acquisition_id: string; phase: string; candidate_json: string; releases_json: string; release_json: string | null; release_source: string | null; release_id: string | null; download_attempted_at: string | null; download_seen_at: string | null; evidence_json: string | null; dock_file_id: number | null; import_attempted_at: string | null; library_id: number | null; folder_id: number | null; phase_started_at: string; }
@@ -15,9 +24,17 @@ export function recordStatus(db: Database.Database, id: string, status: string, 
   db.prepare('UPDATE acquisitions SET status=?,last_error=?,updated_at=? WHERE id=?').run(status, status === 'needs_attention' ? detail : null, now, id);
   if (previous?.status !== status || (status === 'needs_attention' && previous.last_error !== detail)) db.prepare('INSERT INTO acquisition_events(acquisition_id,status,detail,created_at) VALUES(?,?,?,?)').run(id, status, detail, now);
 }
-export function queueAcquisition(db: Database.Database, id: string) {
-  const active = db.prepare("SELECT id FROM jobs WHERE type!='recommendation' AND json_extract(payload_json,'$.id')=? AND status='queued'").get(id);
-  if (!active) { const now = new Date().toISOString(); db.prepare('INSERT INTO jobs(id,type,payload_json,status,run_after,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(randomUUID(), 'reconcile_acquisition', JSON.stringify({ id }), 'queued', now, now, now); }
+export function queueAcquisition(db: Database.Database, id: string, type: 'reconcile_acquisition' | 'check_acquisition_ownership' = 'reconcile_acquisition') {
+  const active = db.prepare("SELECT id,type FROM jobs WHERE type!='recommendation' AND json_extract(payload_json,'$.id')=? AND status='queued'").get(id) as { id: string; type: string } | undefined;
+  // An explicit Recheck takes precedence over a queued background lookup.
+  if (active?.type === 'check_acquisition_ownership' && type === 'reconcile_acquisition') db.prepare("UPDATE jobs SET type='reconcile_acquisition',run_after=? WHERE id=? AND status='queued'").run(new Date().toISOString(), active.id);
+  if (!active) { const now = new Date().toISOString(); db.prepare('INSERT INTO jobs(id,type,payload_json,status,run_after,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(randomUUID(), type, JSON.stringify({ id }), 'queued', now, now, now); }
+}
+export function queueOwnershipChecks(db: Database.Database) {
+  db.transaction(() => {
+    const rows = db.prepare("SELECT a.id FROM acquisitions a JOIN acquisition_flows f ON f.acquisition_id=a.id WHERE a.status='needs_attention' AND a.upstream_book_id IS NULL AND f.phase IN ('track_download','await_import','import') AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.type!='recommendation' AND j.status IN ('queued','running') AND json_extract(j.payload_json,'$.id')=a.id)").all() as { id: string }[];
+    for (const row of rows) queueAcquisition(db, row.id, 'check_acquisition_ownership');
+  }).immediate();
 }
 export function recoverAcquisitions(db: Database.Database) {
   db.transaction(() => {
@@ -62,10 +79,19 @@ export function updateAcquisition(db: Database.Database, id: string, action: 're
       recordStatus(db, id, 'searching_selecting', 'Release explicitly selected; preparing download.');
     } else {
       if (row.status === 'ready_for_kobo') return;
+      if (row.status === 'needs_attention' && f?.phase === 'track_download' && f.download_attempted_at && !f.import_attempted_at) {
+        const evidence: AcquisitionEvidence = f.evidence_json ? JSON.parse(f.evidence_json) : { baselineDockIds: [] };
+        // A click permits one retry of a confirmed failure. An uncertain retry
+        // must be reconciled before a later click can authorize another one.
+        if (!evidence.retry || evidence.retry.confirmed) {
+          evidence.retryRequestedAt = new Date().toISOString();
+          db.prepare('UPDATE acquisition_flows SET evidence_json=? WHERE acquisition_id=?').run(JSON.stringify(evidence), id);
+        }
+      }
       if (f?.phase === 'selecting_release' && !f.download_attempted_at) db.prepare("UPDATE acquisition_flows SET phase='searching',phase_started_at=? WHERE acquisition_id=?").run(new Date().toISOString(), id);
       // Recheck resumes the saved phase. It never clears a submission marker.
       if (f) db.prepare('UPDATE acquisition_flows SET phase_started_at=? WHERE acquisition_id=?').run(new Date().toISOString(), id);
-      recordStatus(db, id, row.upstream_book_id ? 'available_in_bookorbit' : 'checking_status', 'Rechecking saved upstream and file evidence.');
+      recordStatus(db, id, row.upstream_book_id ? 'available_in_bookorbit' : 'checking_status', f?.phase === 'track_download' && !f.import_attempted_at ? 'Rechecking saved upstream and file evidence; a confirmed retryable download failure may be retried once.' : 'Rechecking saved upstream and file evidence.');
     }
     queueAcquisition(db, id);
   }).immediate();
@@ -75,7 +101,7 @@ export function publicAcquisitions(db: Database.Database) {
   return rows.map(row => {
     const f = flow(db, row.id);
     const releases = f?.phase === 'selecting_release' ? (JSON.parse(f.releases_json) as Release[]).map((r, index) => ({ index, title: r.title, author: r.extra?.author, isbn: r.extra?.isbn13 || r.extra?.isbn, year: r.extra?.year, source: r.source, language: r.language, format: r.format, size: r.size, ...releaseAssessment(JSON.parse(f!.candidate_json), r) })) : [];
-    return { ...row, workflow: f ? 'shelfmark' : 'legacy_bookorbit', releases, events: db.prepare('SELECT status,detail,created_at FROM acquisition_events WHERE acquisition_id=? ORDER BY id DESC LIMIT 20').all(row.id) };
+    return { ...row, workflow: f ? 'shelfmark' : 'legacy_bookorbit', canRetryDownload: f?.phase === 'track_download' && !f.import_attempted_at, releases, events: db.prepare('SELECT status,detail,created_at FROM acquisition_events WHERE acquisition_id=? ORDER BY id DESC LIMIT 20').all(row.id) };
   });
 }
 // Kept for previously persisted BookOrbit Requests only.

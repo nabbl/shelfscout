@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test('Activity release picker, safe recheck and readiness text work on desktop and mobile', async ({ page }, testInfo) => {
   let selected = false;
   let rechecked = false;
-  await page.route('**/api/acquisitions', async route => route.fulfill({ json: { items: [{ id: 'fixture', title: 'A Fixture Book', author: 'Test Writer', language: 'en', status: 'needs_attention', last_error: selected ? 'Review delivery before rechecking.' : 'Choose a release.', workflow: 'shelfmark', events: [], releases: selected ? [] : [
+  await page.route('**/api/acquisitions', async route => route.fulfill({ json: { items: [{ id: 'fixture', title: 'A Fixture Book', author: 'Test Writer', language: 'en', status: 'needs_attention', last_error: selected ? 'Shelfmark download failed. Fix the issue, then retry.' : 'Choose a release.', workflow: 'shelfmark', canRetryDownload: selected, events: [], releases: selected ? [] : [
     { index: 0, title: 'A Fixture Book', author: 'Test Writer', language: 'en', format: 'epub', source: 'fixture', selectable: true, reason: 'Confirm the edition.' },
     { index: 1, title: 'A Fixture Book', author: 'Test Writer', language: 'de', format: 'epub', source: 'fixture', selectable: false, reason: 'Language does not match.' },
   ] }] } }));
@@ -22,13 +22,15 @@ test('Activity release picker, safe recheck and readiness text work on desktop a
   await expect(page.getByText(/Device delivery is not confirmed/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Confirm this release' }).nth(1)).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Confirm this release' }).first()).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Recheck / refresh releases' })).toBeVisible();
   const viewport = page.viewportSize()!;
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   await page.screenshot({ path: testInfo.outputPath('acquisition-picker.png'), fullPage: true });
   await page.getByRole('button', { name: 'Confirm this release' }).first().click();
   await expect(page.getByRole('button', { name: 'Confirm this release' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Recheck / refresh releases' }).click();
+  await page.getByRole('button', { name: 'Recheck / retry download' }).click();
   await expect.poll(() => rechecked).toBe(true);
+  await expect(page.getByRole('status').filter({ hasText: 'Check queued. If Shelfmark confirms a retryable download failure, the saved release will be retried once.' })).toBeVisible();
 });
 
 test('acquisition APIs enforce owner authentication and CSRF', async ({ request }) => {

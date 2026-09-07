@@ -3,8 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDatabase } from '../src/lib/db';
-import { acquisition, flow, publicAcquisitions, recoverAcquisitions, submitAcquisition, updateAcquisition } from '../src/lib/acquisition';
-import { reconcileAcquisition } from '../src/lib/acquisition-worker';
+import { acquisition, flow, publicAcquisitions, recoverAcquisitions, submitAcquisition, updateAcquisition, queueOwnershipChecks, queueAcquisition } from '../src/lib/acquisition';
+import { reconcileAcquisition, reconcileOwnedAcquisition } from '../src/lib/acquisition-worker';
 import { BookOrbitClient } from '../src/lib/bookorbit';
 import { ShelfmarkClient } from '../src/lib/shelfmark';
 import { incomingEvidence } from '../src/lib/acquisition-files';
@@ -32,6 +32,7 @@ function setup(persist = false) {
     book: { id: 91, libraryId: 4, ...metadata, files: [{ id: 201, format: 'epub', sizeBytes: bytes.length }] },
     previewStatus: 'ready', finalizeFailure: false, downloadTimeout: false, importTimeout: false, collectionTimeout: false, membershipFailure: false, corruptImported: false,
     autoFinalize: false, downloadPosts: 0, importPosts: 0, collectionPosts: 0,
+    retryPosts: 0, retryTimeout: false, retryNoTransition: false, retryRestoredTask: false,
     dockFile: () => ({ id: 71, fileName: 'fixture.epub', fileSize: bytes.length, format: 'epub', status: 'ready', embeddedMetadata: structuredClone(metadata), selectedMetadata: structuredClone(metadata), unitFiles: [] }),
   };
   cleanups.push(() => { if (h.db.open) h.db.close(); rmSync(dir, { recursive: true, force: true }); });
@@ -61,9 +62,17 @@ function setup(persist = false) {
     if (p === '/api/releases') return json({ releases: h.releases });
     if (p === '/api/releases/download') {
       h.downloadPosts++;
-      h.activity = [{ id: release.source_id, source: release.source, added_time: Date.parse(flow(h.db, h.id)!.download_attempted_at!) / 1000, state: 'downloading' }];
+      h.activity = [{ id: release.source_id, source: release.source, added_time: Date.parse(flow(h.db, h.id)!.download_attempted_at!) / 1000, state: 'downloading', retry_available: true }];
       if (h.downloadTimeout) throw new Error('lost response secret-cookie');
       return json({ status: 'queued', priority: 0 });
+    }
+    if (p === `/api/download/${release.source_id}/retry`) {
+      expect(init?.method).toBe('POST');
+      expect(JSON.parse(flow(h.db, h.id)!.evidence_json!).retry).toMatchObject({ confirmed: false });
+      h.retryPosts++;
+      if (!h.retryNoTransition) h.activity[0] = { ...h.activity[0], state: 'downloading', ...(h.retryRestoredTask ? { added_time: h.now / 1000 } : {}) };
+      if (h.retryTimeout) throw new Error('lost retry response secret-cookie');
+      return json({ status: 'queued', book_id: release.source_id });
     }
     if (p === '/api/activity/snapshot') {
       const status: Record<string, Record<string, unknown>> = {};
@@ -245,9 +254,179 @@ describe('Shelfmark → Book Dock → Kobo lifecycle', () => {
     const { h, queueDownload, step } = setup(); await queueDownload(); h.activity[0].source = 'another-source';
     await step(); expect(acquisition(h.db, h.id)!.status).toBe('needs_attention'); expect(h.importPosts).toBe(0);
   });
+  it.each(['error', 'cancelled'])('retries an explicitly rechecked %s download once and completes after restart', async state => {
+    const { h, queueDownload, step, deliver } = setup(true); await queueDownload();
+    h.activity[0].state = state; await step();
+    const originalAttempt = flow(h.db, h.id)!.download_attempted_at;
+    expect(h.retryPosts).toBe(0);
+    expect(publicAcquisitions(h.db)[0].canRetryDownload).toBe(true);
+    updateAcquisition(h.db, h.id, 'recheck'); updateAcquisition(h.db, h.id, 'recheck');
+    await step(); expect(h.retryPosts).toBe(1);
+    expect(flow(h.db, h.id)!.download_attempted_at).toBe(originalAttempt);
+    h.db.close(); h.db = createDatabase(h.dbPath);
+    await step(); await deliver(); await step(); await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('ready_for_kobo');
+    expect(h.downloadPosts).toBe(1); expect(h.retryPosts).toBe(1); expect(h.importPosts).toBe(1);
+  });
+  it('tracks a restored retry with a new active time and the original persisted terminal time', async () => {
+    const { h, queueDownload, step, deliver } = setup(); await queueDownload();
+    const originalTime = Number(h.activity[0].added_time);
+    h.activity[0].state = 'error'; await step(); h.retryRestoredTask = true;
+    updateAcquisition(h.db, h.id, 'recheck'); await step(); await step();
+    expect(Number(h.activity[0].added_time)).toBeGreaterThan(originalTime);
+    h.activity[0].added_time = Math.floor(originalTime);
+    await deliver(); await step(); await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('ready_for_kobo'); expect(h.retryPosts).toBe(1);
+  });
+  it('recovers a lost retry response through active activity without resending after restart', async () => {
+    const { h, queueDownload, step, deliver } = setup(true); await queueDownload();
+    h.activity[0].state = 'error'; await step(); h.retryTimeout = true; h.retryRestoredTask = true;
+    updateAcquisition(h.db, h.id, 'recheck'); await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('submission_uncertain');
+    h.db.close(); h.db = createDatabase(h.dbPath);
+    await step(); await deliver(); await step(); await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('ready_for_kobo');
+    expect(h.retryPosts).toBe(1); expect(h.downloadPosts).toBe(1);
+  });
+  it('does not resend an uncertain retry when the old failure remains, even after another click', async () => {
+    const { h, queueDownload, step } = setup(); await queueDownload();
+    h.activity[0].state = 'error'; await step(); h.retryTimeout = true; h.retryNoTransition = true;
+    updateAcquisition(h.db, h.id, 'recheck'); await step();
+    h.now += 11 * 60_000; await step();
+    expect(acquisition(h.db, h.id)!.last_error).toContain('retry outcome is still uncertain');
+    updateAcquisition(h.db, h.id, 'recheck'); await step();
+    expect(h.retryPosts).toBe(1); expect(h.downloadPosts).toBe(1);
+  });
+  it('does not send a retry after a crash between saving retry intent and POST', async () => {
+    const { h, queueDownload, step } = setup(true); await queueDownload();
+    h.activity[0].state = 'error'; await step();
+    const evidence = JSON.parse(flow(h.db, h.id)!.evidence_json!);
+    evidence.retry = { attemptedAt: new Date(h.now).toISOString(), confirmed: false };
+    h.db.prepare('UPDATE acquisition_flows SET evidence_json=? WHERE acquisition_id=?').run(JSON.stringify(evidence), h.id);
+    h.db.close(); h.db = createDatabase(h.dbPath);
+    await step(); h.now += 11 * 60_000; await step();
+    updateAcquisition(h.db, h.id, 'recheck'); await step();
+    expect(h.retryPosts).toBe(0); expect(h.downloadPosts).toBe(1);
+    expect(acquisition(h.db, h.id)!.last_error).toContain('retry outcome is still uncertain');
+  });
+  it('refreshes the Dock baseline before retrying and rejects a pre-existing partial entry', async () => {
+    const { h, queueDownload, step, deliver } = setup(); await queueDownload();
+    h.activity[0].state = 'error'; await step(); h.dock = [h.dockFile()];
+    updateAcquisition(h.db, h.id, 'recheck'); await step();
+    expect(JSON.parse(flow(h.db, h.id)!.evidence_json!).baselineDockIds).toEqual([71]);
+    await deliver(); await step();
+    expect(acquisition(h.db, h.id)!.last_error).toContain('predates this submission');
+    expect(h.retryPosts).toBe(1); expect(h.importPosts).toBe(0);
+  });
+  it('requires another explicit click when an acknowledged retry fails again', async () => {
+    const { h, queueDownload, step } = setup(); await queueDownload();
+    h.activity[0].state = 'error'; await step();
+    updateAcquisition(h.db, h.id, 'recheck'); await step();
+    h.activity[0].state = 'error'; await step(); await step();
+    expect(h.retryPosts).toBe(1);
+    updateAcquisition(h.db, h.id, 'recheck'); await step();
+    expect(h.retryPosts).toBe(2); expect(h.downloadPosts).toBe(1);
+  });
+  it.each(['unavailable', 'active', 'complete', 'source-conflict', 'generation-conflict', 'owned', 'auto-finalize'])('does not retry when the latest evidence is %s', async kind => {
+    const { h, queueDownload, step } = setup(); await queueDownload();
+    h.activity[0].state = 'error'; await step();
+    if (kind === 'unavailable') h.activity[0].retry_available = false;
+    if (kind === 'active') h.activity[0].state = 'downloading';
+    if (kind === 'complete') h.activity[0] = { ...h.activity[0], state: 'complete', download_path: '/books/fixture.epub' };
+    if (kind === 'source-conflict') h.activity[0].source = 'another-source';
+    if (kind === 'generation-conflict') h.activity[0].added_time = Number(h.activity[0].added_time) + 60;
+    if (kind === 'owned') h.owned = 91;
+    if (kind === 'auto-finalize') h.autoFinalize = true;
+    updateAcquisition(h.db, h.id, 'recheck'); await step();
+    expect(h.retryPosts).toBe(0); expect(h.downloadPosts).toBe(1);
+    expect(JSON.parse(flow(h.db, h.id)!.evidence_json!).retryRequestedAt).toBeUndefined();
+  });
   it('does not import a partial download even if Book Dock already calls it ready', async () => {
     const { h, queueDownload, step } = setup(); await queueDownload(); h.dock = [h.dockFile()];
     await step(); expect(acquisition(h.db, h.id)!.status).toBe('downloading'); expect(h.importPosts).toBe(0);
+  });
+  it('recognizes an external import before file observation even when Shelfmark no longer exposes a path', async () => {
+    const { h, queueDownload, step, fetchMock } = setup(); await queueDownload();
+    h.activity[0] = { ...h.activity[0], state: 'complete', download_path: null };
+    await step(); expect(acquisition(h.db, h.id)!.status).toBe('needs_attention');
+    h.owned = 91; rmSync(h.incoming, { recursive: true });
+    updateAcquisition(h.db, h.id, 'recheck'); fetchMock.mockClear();
+    await step(); expect(acquisition(h.db, h.id)!.status).toBe('available_in_bookorbit');
+    await step(); expect(acquisition(h.db, h.id)!.status).toBe('ready_for_kobo');
+    expect(fetchMock.mock.calls.some(([url]) => new URL(url).pathname.startsWith('/base/api/activity'))).toBe(false);
+    expect(h.retryPosts).toBe(0); expect(h.downloadPosts).toBe(1); expect(h.importPosts).toBe(0); expect(h.collectionPosts).toBe(1);
+  });
+  it('recovers an external import while awaiting Book Dock, verifying saved bytes after the incoming file moves', async () => {
+    const { h, queueDownload, deliver, step, fetchMock } = setup(true);
+    await queueDownload(); await deliver();
+    expect(flow(h.db, h.id)!.import_attempted_at).toBeNull();
+    h.owned = 91; h.dock = []; rmSync(h.incoming, { recursive: true });
+    h.db.close(); h.db = createDatabase(h.dbPath);
+    fetchMock.mockClear(); await step(); await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('ready_for_kobo');
+    expect(fetchMock.mock.calls.some(([url]) => new URL(url).pathname.endsWith('/books/files/201/download'))).toBe(true);
+    expect(h.importPosts).toBe(0); expect(h.retryPosts).toBe(0);
+  });
+  it('queues one ownership-only job for a blocked download and resumes collection processing once imported', async () => {
+    const { h, queueDownload, step } = setup(); await queueDownload();
+    h.activity[0].state = 'error'; await step();
+    h.db.prepare("UPDATE jobs SET status='complete'").run();
+    queueOwnershipChecks(h.db); queueOwnershipChecks(h.db);
+    const job = claimJob(h.db)!;
+    expect(job.type).toBe('check_acquisition_ownership');
+    queueOwnershipChecks(h.db);
+    expect(h.db.prepare("SELECT count(*) n FROM jobs WHERE status IN ('queued','running')").get()).toEqual({ n: 1 });
+    h.owned = 91;
+    expect(await reconcileOwnedAcquisition(h.db, h.id)).toBe(true);
+    expect(acquisition(h.db, h.id)!.status).toBe('available_in_bookorbit');
+    expect(h.collectionPosts).toBe(0); expect(h.retryPosts).toBe(0); expect(h.importPosts).toBe(0);
+    queueAcquisition(h.db, h.id);
+    h.db.prepare("UPDATE jobs SET status='complete' WHERE id=?").run(job.id);
+    expect(claimJob(h.db)!.type).toBe('reconcile_acquisition');
+    await step();
+    expect(acquisition(h.db, h.id)!.status).toBe('ready_for_kobo');
+  });
+  it('leaves an unowned failed download untouched during a background ownership check', async () => {
+    const { h, queueDownload, step, fetchMock } = setup(); await queueDownload();
+    h.activity[0].state = 'error'; await step();
+    const before = acquisition(h.db, h.id);
+    fetchMock.mockClear();
+    expect(await reconcileOwnedAcquisition(h.db, h.id)).toBe(false);
+    expect(acquisition(h.db, h.id)).toEqual(before);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(h.retryPosts).toBe(0); expect(h.importPosts).toBe(0); expect(h.collectionPosts).toBe(0);
+  });
+  it('upgrades a queued ownership check when the user explicitly requests a retry', async () => {
+    const { h, queueDownload, step } = setup(); await queueDownload();
+    h.activity[0].state = 'error'; await step();
+    h.db.prepare("UPDATE jobs SET status='complete'").run();
+    queueOwnershipChecks(h.db);
+    updateAcquisition(h.db, h.id, 'recheck');
+    expect(claimJob(h.db)!.type).toBe('reconcile_acquisition');
+    await step(); expect(h.retryPosts).toBe(1);
+    expect(acquisition(h.db, h.id)!.status).toBe('downloading');
+  });
+  it('preserves the original failure when a background ownership lookup is unavailable', async () => {
+    const { h, queueDownload, step } = setup(); await queueDownload();
+    h.activity[0].state = 'error'; await step();
+    const before = acquisition(h.db, h.id);
+    const bo = new BookOrbitClient(); vi.spyOn(bo, 'availability').mockRejectedValue(new Error('Temporary upstream failure'));
+    expect(await reconcileOwnedAcquisition(h.db, h.id, bo)).toBe(false);
+    expect(acquisition(h.db, h.id)).toEqual(before);
+  });
+  it.each(['metadata', 'format', 'checksum', 'library'])('rejects an external import with mismatched %s', async kind => {
+    const { h, queueDownload, deliver, step } = setup(); await queueDownload();
+    if (kind === 'checksum' || kind === 'library') await deliver();
+    h.owned = 91;
+    if (kind === 'metadata') h.book.title = 'Another Book';
+    if (kind === 'format') h.book.files[0].format = 'pdf';
+    if (kind === 'checksum') h.corruptImported = true;
+    if (kind === 'library') h.book.libraryId = 5;
+    await step();
+    expect(await reconcileOwnedAcquisition(h.db, h.id)).toBe(false);
+    expect(acquisition(h.db, h.id)!.status).toBe('needs_attention');
+    expect(acquisition(h.db, h.id)!.upstream_book_id).toBeNull();
+    expect(h.collectionPosts).toBe(0); expect(h.importPosts).toBe(0); expect(h.retryPosts).toBe(0);
   });
   it.each(['unrelated', 'duplicate', 'metadata', 'size', 'changed', 'pending'])('does not finalize %s file evidence', async kind => {
     const { h, queueDownload, deliver, step } = setup(); await queueDownload(); await deliver();

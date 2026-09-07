@@ -6,6 +6,24 @@ import { settingsRequest } from '../app/ui/settings-request';
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('integration connection diagnostics', () => {
+  it('retries the encoded saved Shelfmark task through its retry endpoint', async () => {
+    const id = 'saved/task';
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ status: 'queued', book_id: id }));
+    vi.stubGlobal('fetch', fetchMock);
+    await new ShelfmarkClient('http://shelfmark.test/base', '').retryDownload(id);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe('http://shelfmark.test/base/api/download/saved%2Ftask/retry');
+    expect(options.method).toBe('POST');
+    expect(options.body).toBeUndefined();
+    expect(options.redirect).toBe('error');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it.each([{ status: 'queued', book_id: 'another-task' }, { status: 'error', book_id: 'saved-task' }])('does not treat an incompatible retry response as confirmation', async response => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json(response));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(new ShelfmarkClient('http://shelfmark.test', '').retryDownload('saved-task')).rejects.toThrow('retry outcome is unknown');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it('tests Shelfmark without a cookie when authentication is disabled', async () => {
     vi.stubEnv('SHELFMARK_COOKIE', '');
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ status: {} }));
