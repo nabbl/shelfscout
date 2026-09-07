@@ -33,6 +33,12 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# Private deployment customizations (use deploy/compose.docktail.example.yml)
+/compose.override.yml
+/compose.override.yaml
+/compose.*.local.yml
+/compose.*.local.yaml
+
 # vercel
 .vercel
 

@@ -24,6 +24,8 @@ node -e "require('bcryptjs').hash(process.argv[1],12).then(console.log)" 'your p
 
 Use `docker compose up --build` for the packaged deployment. The UI is at `http://localhost:3000`; `/api/health` is available for container checks. Both development and production refuse to create sessions unless `SESSION_SECRET` has at least 32 characters. Set `DEMO_MODE=true` only for the visibly labelled, non-live demonstration, and put a rate-limiting reverse proxy in front of an internet-exposed instance.
 
+For private HTTPS access, see [Tailscale / DockTail setup](docs/tailscale.md), including a gitignored Compose override and private Arcane configuration.
+
 ## Data boundaries
 
 - The original Goodreads CSV is private under `DATA_DIR/imports`; raw columns are preserved and import never triggers acquisition.

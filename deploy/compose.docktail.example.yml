@@ -1,0 +1,14 @@
+# Optional overlay; see docs/tailscale.md. Never use as a standalone Compose file.
+# Copy to compose.docktail.local.yml at the repository root before customizing.
+services:
+  web:
+    # DockTail's default direct mode reaches the container IP on port 3000.
+    # !reset removes the host port inherited from the base Compose file.
+    ports: !reset []
+    labels:
+      docktail.service.enable: "true"
+      docktail.service.name: "${DOCKTAIL_SERVICE_NAME:-shelfscout}"
+      docktail.service.port: "3000"
+      docktail.service.protocol: "http"
+      docktail.service.service-port: "443"
+      docktail.service.service-protocol: "https"
