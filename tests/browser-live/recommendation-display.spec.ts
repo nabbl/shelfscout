@@ -15,10 +15,15 @@ test('stored ratings and useful caveats render while old boilerplate is hidden',
   await expect(page.getByText(/CSV imported 2026-09-07/)).toBeVisible();
   await expect(page.getByText('Use Refresh ratings to look up this book through BookOrbit.')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'What might put you off' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Why this batch' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   item.caveat = 'The catalog describes a war, which conflicts with your preference to avoid war.';
+  item.batchReason = 'This pick explores a new author while retaining your interest in memory.';
   await page.reload();
   await expect(page.getByText(item.caveat)).toBeVisible();
+  await page.getByRole('button', { name: 'Why this book?' }).click();
+  await expect(page.getByRole('heading', { name: 'Why this batch' })).toBeVisible();
+  await expect(page.getByText(item.batchReason, { exact: true })).toBeVisible();
 });
 
 

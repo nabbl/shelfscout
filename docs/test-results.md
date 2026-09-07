@@ -1,5 +1,13 @@
 # Verification results
 
+## 2026-09-07 — Browser expectation after boilerplate removal
+
+The discovery test still required “Why this batch” for every book, although strong-fit fixture books intentionally omit that generic explanation. Updated the test to verify the actual fit and catalog description and absence of an empty batch section. The display regression now verifies both hidden legacy boilerplate and visible meaningful batch explanations.
+
+- Full `npm run test:browser:live`: 26 passed, including the reported mobile discovery/worker/feedback/undo test.
+- Full `npm run test:browser`: 4 passed.
+- Typecheck, lint and diff checks passed. Tests ran in an isolated source copy and fixture database; no user services were restarted. No application behavior changed.
+
 ## 2026-09-07 — Shelfmark release identity compatibility
 
 - Reproduced two false negatives from the saved Nightfall results: surname-first co-author strings and Shelfmark's preserved `📕 book (fiction)` category were rejected by literal comparisons.

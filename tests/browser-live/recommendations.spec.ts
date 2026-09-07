@@ -10,7 +10,10 @@ test('authenticated discovery, durable worker, preferences, details, feedback an
     const title = await page.getByRole('heading', { name: /Synthetic browser book/ }).first().textContent();
     await page.getByRole('button', { name: 'Why this book?' }).first().click();
     await expect(page.getByRole('heading', { name: 'Catalog description' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Why this batch' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Why it fits' })).toBeVisible();
+    await expect(page.getByText('A synthetic fixture story about memory.', { exact: true })).toBeVisible();
+    // Strong-fit fixture books omit the former generic batch explanation.
+    await expect(page.getByRole('heading', { name: 'Why this batch' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await page.getByRole('button', { name: `Save ${title}`, exact: true }).click();
     await expect(page.getByRole('heading', { name: title!, exact: true })).toHaveCount(0);
