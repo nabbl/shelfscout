@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/icons/icon-192.png" alt="ShelfScout: an S inside a magnifying glass" width="128" height="128" />
+</p>
+
 # ShelfScout
 
 ShelfScout is a private, self-hosted book-discovery companion. It imports Goodreads history, finds real candidates through Open Library, explains inspectable fit/caveat evidence, and orchestrates Shelfmark release search/download followed by verified BookOrbit Book Dock import and Kobo collection membership. Existing BookOrbit Requests continue to reconcile.
@@ -31,6 +35,12 @@ Use `docker compose up --build` for the packaged deployment. The UI is at `http:
 For private HTTPS access, see [Tailscale / DockTail setup](docs/tailscale.md), including a gitignored Compose override and private Arcane configuration.
 
 For prebuilt amd64/arm64 images and Arcane GitOps, see [CI / GHCR setup](docs/ci.md). GitHub Actions checks the app and containers before publishing to `ghcr.io/nabbl/shelfscout` and updating a digest-pinned deployment branch.
+
+## Install as an app
+
+Open your ShelfScout HTTPS address and choose **Install app** in a supported browser, or **Share → Add to Home Screen** in Safari on iPhone/iPad. ShelfScout opens in its own window with the new home-screen icon. It requires a connection to your ShelfScout server; offline reading and background sync are not provided.
+
+The approved [logo artwork](public/brand/shelfscout-icon-v3.png) supplies the app, favicon, Apple touch icon, and standard/maskable PWA icons. Regenerate the icon sizes with `node scripts/generate-brand-icons.mjs`.
 
 ## Data boundaries
 
