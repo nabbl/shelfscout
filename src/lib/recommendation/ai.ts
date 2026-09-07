@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { ShelfDb } from '../db';
 import { hash, representative } from './profile';
 import { preferenceSchema, type Profile, type CatalogBook, type Assessment } from './types';
-export const PROMPT_VERSION = 'grounded-v3';
+export const PROMPT_VERSION = 'grounded-v4-series';
 export function modelConfigured() { return Boolean(process.env.MODEL_BASE_URL?.trim() && process.env.MODEL_NAME?.trim()); }
 export async function cached<T>(db: ShelfDb, key: string, ttl: number, fn: () => Promise<T>): Promise<T> { const row = db.prepare('SELECT value_json FROM recommendation_cache WHERE key=? AND expires_at>?').get(key, new Date().toISOString()) as {
     value_json: string;
@@ -29,7 +29,7 @@ export async function interpretProfile(db: ShelfDb, profile: Profile): Promise<P
     return { ...profile, sourceVersion:profile.sourceVersion||profile.version, preferences: [...profile.preferences, ...valid], version: hash({ base: profile.version, valid, prompt: PROMPT_VERSION }) };
 }
 export const strategySchema = z.object({ strategies: z.array(z.object({ kind: z.enum(['theme', 'author', 'related', 'exploration', 'mood']), query: z.string().min(2).max(160), reason: z.string().max(300) })).min(1).max(8) });
-export async function planDiscovery(db: ShelfDb, profile: Profile, mood: string) { return modelJson(db, 'discovery', 'Return {strategies:[{kind:"theme"|"author"|"related"|"exploration"|"mood",query,reason}]}. Queries are Open Library searches, not URLs. Use complementary themes, similar/contrasting authors, translated literature and deliberate exploration. Mood overrides historical preference for this batch. Do not search for already-read titles. No claim of relatedness without evidence.', { preferences: profile.preferences, evidence: representative(profile), mood }, strategySchema); }
+export async function planDiscovery(db: ShelfDb, profile: Profile, mood: string) { return modelJson(db, 'discovery', 'Return {strategies:[{kind:"theme"|"author"|"related"|"exploration"|"mood",query,reason}]}. Queries are Open Library searches, not URLs. Use complementary themes, similar/contrasting authors, translated literature and deliberate exploration. Mood overrides historical preference for this batch. Series policy: when series are allowed, seek book one, never a sequel or prequel; when disabled, seek standalone works. Catalog membership/order will be verified separately. Do not search for already-read titles. No claim of relatedness without evidence.', { preferences: profile.preferences, evidence: representative(profile), mood, allowSeries: profile.settings.allowSeries }, strategySchema); }
 const link = z.object({ preferenceId: z.string(), quote: z.string().min(3).max(500), field: z.enum(['subjects', 'description']), interpretation: z.string().max(500) });
 export const assessmentSchema = z.object({ assessments: z.array(z.object({ key: z.string(), matches: z.array(link).max(8), risks: z.array(link).max(8), mood: z.object({ quote: z.string().min(3).max(500), field: z.enum(['subjects', 'description']), interpretation: z.string().max(500) }).nullable() })).max(20) });
 export function validateAssessments(books: CatalogBook[], profile: Profile, values: Assessment[]): Assessment[] { const seen = new Set<string>(); return values.filter(a => { const b = books.find(b => b.key === a.key); if (!b || seen.has(a.key))

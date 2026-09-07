@@ -1,4 +1,5 @@
 export interface Candidate {
+    seriesMemberships?: import('./recommendation/types').SeriesMembership[];
     workKey: string;
     editionKey: string;
     title: string;

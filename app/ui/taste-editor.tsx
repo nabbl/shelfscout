@@ -1,22 +1,31 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { settingsRequest } from './settings-request';
 import type { Profile, Preference, TasteSettings } from '@/src/lib/recommendation/types';
 export function TasteEditor() {
+    const [saving, setSaving] = useState(false);
     const [profile, setProfile] = useState<Profile | null>(null), [models, setModels] = useState<Preference[]>([]), [message, setMessage] = useState(''), [value, setValue] = useState(''), [direction, setDirection] = useState<'prefer' | 'avoid'>('prefer'), [dimension, setDimension] = useState<Preference['dimension']>('theme');
     useEffect(() => { void fetch('/api/taste').then(r => r.json()).then(d => { setProfile(d.profile); setModels(d.lastModelPreferences || []); }).catch(() => setMessage('Could not load taste profile.')); }, []);
-    async function save(settings: TasteSettings) { const token = (await (await fetch('/api/auth/csrf')).json()).token; const r = await fetch('/api/taste', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-csrf-token': token }, body: JSON.stringify(settings) }); const data = await r.json(); if (r.ok) {
-        setProfile(data.profile);
-        setMessage('Saved. Refresh picks to apply these preferences.');
+    async function save(settings: TasteSettings) {
+        if (!profile || saving) return;
+        const previous = profile;
+        setSaving(true); setProfile({ ...profile, settings }); setMessage('Saving…');
+        try {
+            const { token } = await settingsRequest('/api/auth/csrf');
+            const data = await settingsRequest('/api/taste', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-csrf-token': token }, body: JSON.stringify(settings) });
+            setProfile(data.profile); setMessage('Saved. Refresh picks to apply these preferences.');
+        } catch (error) {
+            setProfile(previous); setMessage(error instanceof Error ? error.message : 'Could not save your preferences.');
+        } finally { setSaving(false); }
     }
-    else
-        setMessage(data.error); }
     if (!profile)
         return <article><h3>Taste profile</h3><p>{message || 'Loading evidence…'}</p></article>;
-    return <article className="taste-editor"><h3>Your taste, with evidence</h3><p>Explicit preferences override matching inferences. Missing traits remain unknown. Mood applies only to a batch.</p><p role="status">{message}</p><form onSubmit={e => { e.preventDefault(); if (value.trim()) {
+    return <article className="taste-editor"><h3>Your taste, with evidence</h3><p>Explicit preferences override matching inferences. Missing traits remain unknown. Suggested moods focus a single batch. Series are recommended from book one.</p><p role="status">{message}</p><fieldset className="taste-controls" disabled={saving}><form onSubmit={e => { e.preventDefault(); if (value.trim()) {
         void save({ ...profile.settings, preferences: [...profile.settings.preferences.filter(p => p.value.toLowerCase() !== value.trim().toLowerCase()), { id: `owner:${Date.now()}`, dimension, value: value.trim(), direction, origin: 'explicit', confidence: 'supported', support: ['owner'], counterexamples: [] }] });
         setValue('');
     } }}><label>Dimension<select value={dimension} onChange={e => setDimension(e.target.value as Preference['dimension'])}>{['theme', 'prose', 'pacing', 'character', 'tone', 'structure', 'length', 'ambiguity', 'subject', 'author'].map(d => <option key={d}>{d}</option>)}</select></label><label>Preference<select value={direction} onChange={e => setDirection(e.target.value as 'prefer' | 'avoid')}><option value="prefer">Prefer</option><option value="avoid">Avoid</option></select></label><input aria-label="Preference description" placeholder="e.g. unreliable narrators" maxLength={120} value={value} onChange={e => setValue(e.target.value)} required/><button>Add preference</button></form><label><input type="checkbox" checked={profile.settings.includeReviews} onChange={e => void save({ ...profile.settings, includeReviews: e.target.checked })}/> Allow bounded review excerpts to be sent to my configured model. Titles, ratings, shelves and feedback reasons are sent when AI is enabled.</label><label><input type="checkbox" checked={profile.settings.rereads} onChange={e => void save({ ...profile.settings, rereads: e.target.checked })}/> Allow intentional rereads in future batches</label>
- {[...profile.preferences, ...models.filter(p => !profile.settings.disabled.includes(p.id) && !profile.preferences.some(x => x.value === p.value))].map(p => <section key={p.id}><strong>{p.direction} {p.value}</strong><p>{p.dimension} · {p.origin} · {p.confidence}</p><details><summary>Supporting records and counterexamples</summary>{[...p.support, ...p.counterexamples].map(id => { const e = profile.evidence.find(e => e.id === id); return <p key={id}>{p.counterexamples.includes(id) ? 'Counterexample: ' : ''}{e ? `${e.title} — ${e.rating ?? 'unrated'} (${e.status})` : id}</p>; })}</details>{p.origin !== 'explicit' && <button onClick={() => void save({ ...profile.settings, preferences: [...profile.settings.preferences, { ...p, origin: 'explicit' }] })}>Confirm</button>}<button onClick={() => void save({ ...profile.settings, preferences: profile.settings.preferences.filter(x => x.id !== p.id), disabled: p.origin === 'explicit' ? profile.settings.disabled : [...profile.settings.disabled, p.id] })}>{p.origin === 'explicit' ? 'Remove' : 'Reject inference'}</button></section>)}{profile.settings.disabled.length > 0 && <button onClick={() => void save({ ...profile.settings, disabled: [] })}>Restore rejected inferences</button>}<p>{profile.unknown.join(' ')}</p></article>;
+<label><input type="checkbox" checked={profile.settings.allowSeries} onChange={e => void save({ ...profile.settings, allowSeries: e.target.checked })}/> Allow books that are part of a series</label><p>When enabled, known series start at book one. When disabled, known series books are excluded. Catalog series coverage can be incomplete.</p>
+ {[...profile.preferences, ...models.filter(p => !profile.settings.disabled.includes(p.id) && !profile.preferences.some(x => x.value === p.value))].map(p => <section key={p.id}><strong>{p.direction} {p.value}</strong><p>{p.dimension} · {p.origin} · {p.confidence}</p><details><summary>Supporting records and counterexamples</summary>{[...p.support, ...p.counterexamples].map(id => { const e = profile.evidence.find(e => e.id === id); return <p key={id}>{p.counterexamples.includes(id) ? 'Counterexample: ' : ''}{e ? `${e.title} — ${e.rating ?? 'unrated'} (${e.status})` : id}</p>; })}</details>{p.origin !== 'explicit' && <button onClick={() => void save({ ...profile.settings, preferences: [...profile.settings.preferences, { ...p, origin: 'explicit' }] })}>Confirm</button>}<button onClick={() => void save({ ...profile.settings, preferences: profile.settings.preferences.filter(x => x.id !== p.id), disabled: p.origin === 'explicit' ? profile.settings.disabled : [...profile.settings.disabled, p.id] })}>{p.origin === 'explicit' ? 'Remove' : 'Reject inference'}</button></section>)}{profile.settings.disabled.length > 0 && <button onClick={() => void save({ ...profile.settings, disabled: [] })}>Restore rejected inferences</button>}<p>{profile.unknown.join(' ')}</p></fieldset></article>;
 }
 export function FeedbackLog({onSelect}:{onSelect:(candidate:Record<string,unknown>)=>void}) { const [items, setItems] = useState<{
     id: number;

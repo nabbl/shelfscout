@@ -1,5 +1,14 @@
 # Verification results
 
+## 2026-09-07 — Series starting points and suggested moods
+
+- `npm test`: 127 passed in 18 files. New cases cover structured series fields, first-book substitution and its own evidence, deduplication, missing/conflicting order, prequels, pagination, series-disabled filtering, read/saved/dismissed exclusions, history-supported moods, negative preferences, hidden choices, stale supporting evidence and settings defaults.
+- Full `npm run test:browser:live`: 32 passed on desktop/mobile. Full demo browser suite: four passed. Includes series settings persistence, ordered members/read markers, coherent mood selection and clearing, durable hide/restore, 44px mobile removal targets, and owner/CSRF checks. Fixed optimistic checkbox state with rollback on save errors during these checks.
+- Typecheck, lint, production build and diff checks passed. Mobile mood and series screenshots were inspected in the isolated browser fixture.
+- Read-only live Open Library verification: Dune Messiah resolved as Dune #2 and was replaced with Dune #1 before ranking. The structured series list returned six numbered works. The authenticated local series endpoint returned the same list; the taste endpoint returned configured mood suggestions.
+- Restarted the idle local worker to load the new rules. The user's web server was not restarted. No live recommendation generation, acquisitions or deployments were triggered. Existing recommendation cards require Refresh picks to gain newly fetched series metadata; known saved-batch series are filtered immediately.
+- Catalog coverage remains incomplete: unknown series membership cannot prove standalone status, and series lists explicitly report that limitation. Series identity/order is not inferred from model output or publication year.
+
 ## 2026-09-07 — Browser expectation after boilerplate removal
 
 The discovery test still required “Why this batch” for every book, although strong-fit fixture books intentionally omit that generic explanation. Updated the test to verify the actual fit and catalog description and absence of an empty batch section. The display regression now verifies both hidden legacy boilerplate and visible meaningful batch explanations.

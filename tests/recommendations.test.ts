@@ -8,7 +8,7 @@ import { validateAssessments, modelJson } from '../src/lib/recommendation/ai';
 import { z } from 'zod';
 import type { CatalogBook, Profile, Preference } from '../src/lib/recommendation/types';
 export const preference = (value: string, direction: 'prefer' | 'avoid' = 'prefer'): Preference => ({ id: value, dimension: 'theme', value, direction, origin: 'explicit', confidence: 'supported', support: ['owner'], counterexamples: [] });
-export const profile = (preferences: Preference[]): Profile => ({ version: 'synthetic-v1', preferences, evidence: [], settings: { preferences, disabled: [], includeReviews: false, rereads: false }, unknown: [] });
+export const profile = (preferences: Preference[]): Profile => ({ version: 'synthetic-v1', preferences, evidence: [], settings: { preferences, disabled: [], includeReviews: false, rereads: false, allowSeries: true, hiddenMoods: [] }, unknown: [] });
 export const book = (key: string, subjects: string[], author = key, series: string | null = null): CatalogBook => ({ key: `/works/OL${key}W`, title: `Synthetic ${key}`, author, year: 2000, isbns: [], language: 'eng', coverUrl: null, subjects, description: `A story about ${subjects.join(' and ')}.`, series, strategies: ['theme'] });
 export const context = (): RankContext => ({ known: new Set(), dismissed: new Set(), deferred: new Set(), saved: new Set(), requested: new Set(), exposed: new Set(), aliases: new Map(), mood: '', rereads: false });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });

@@ -18,8 +18,8 @@ const fixtureProfile=buildProfile(db);fixtureProfile.preferences.push({...prefer
 for (const mood of ['', 'adventure'])
     for (const strategy of defaultStrategies(fixtureProfile, mood))
         for (let page = 1; page <= 5; page++) {
-            const params = new URLSearchParams({ q: strategy.query, fields: 'key,title,author_name,first_publish_year,cover_i,isbn,language,subject', limit: '40', page: String(page) });
-            cache(`catalog-v2:${hash(params.toString())}`, { docs });
+            const params = new URLSearchParams({ q: strategy.query, fields: 'key,title,author_name,first_publish_year,cover_i,isbn,language,subject,series_key,series_name,series_position', limit: '40', page: String(page) });
+            cache(`catalog-v3:${hash(params.toString())}`, { docs });
         }
 for (const d of docs)
     cache(`work-v2:${d.key}`, { key: d.key, title: d.title, description: 'A synthetic fixture story about memory.', subjects: ['memory'] });

@@ -1,3 +1,4 @@
+import { primarySeries } from './series';
 import { normalize, workKey } from '../identity';
 import type { Candidate } from '../recommendations';
 import type { CatalogBook, Profile, Assessment, Preference } from './types';
@@ -38,6 +39,7 @@ function strength(p: Preference) { return p.origin === 'explicit' ? 4 : p.confid
 export function rankPool(books: CatalogBook[], profile: Profile, context: RankContext, assessments: Assessment[] = []): RankedCandidate[] {
     const scored: RankedCandidate[] = [];
     for (const b of books) {
+        if (!profile.settings.allowSeries && primarySeries(b)) continue;
         if(context.ambiguous?.has(b.key))continue;
         const wk = workKey(b.title, b.author);
         const identities = [wk, b.key, ...(context.aliases.get(b.key) || [])];
@@ -94,7 +96,7 @@ export function rankPool(books: CatalogBook[], profile: Profile, context: RankCo
         const why = (fit || 'Verified catalog work; there is not enough evidence to claim this fits your taste.')
             + (moodFit ? ` For your current mood: ${ai?.mood?.interpretation || `the catalog mentions “${context.mood}”`}.` : context.mood ? ' A match to your current mood is not established.' : '');
         const isbn13 = b.isbns[0] || null;
-        scored.push({ workKey: wk, editionKey: b.key, catalogKey: b.key, title: b.title, author: b.author, year: b.year, isbn13: null, language: b.language, coverUrl: b.coverUrl, sourceUrl: `https://openlibrary.org${b.key}`, sourceLabel: 'Open Library work catalog', subjects: b.subjects, category, why, caveat: risks.join(' ') || (!rich ? 'Description or subject evidence is incomplete; pacing, tone and enjoyment remain unknown.' : ''), ratings: { goodreads: { rating: null, count: null, status: 'not_retrieved', url: `https://www.goodreads.com/search?q=${encodeURIComponent(`${b.title} ${b.author}`)}`, freshness: 'Unknown' }, amazon: { rating: null, count: null, status: 'not_retrieved', url: `https://www.amazon.com/s?k=${encodeURIComponent(isbn13 || `${b.title} ${b.author}`)}&i=stripbooks`, freshness: 'Unknown' } }, description: b.description, series: b.series, batchReason: reason, score, evidence, assessmentMode: ai ? 'model interpretation with validated catalog citations' : 'literal catalog evidence', identityStatus: 'Catalog work verified; a language-specific acquisition edition is not verified' });
+        scored.push({ workKey: wk, editionKey: b.key, catalogKey: b.key, title: b.title, author: b.author, year: b.year, isbn13: null, language: b.language, coverUrl: b.coverUrl, sourceUrl: `https://openlibrary.org${b.key}`, sourceLabel: 'Open Library work catalog', subjects: b.subjects, category, why, caveat: risks.join(' ') || (!rich ? 'Description or subject evidence is incomplete; pacing, tone and enjoyment remain unknown.' : ''), ratings: { goodreads: { rating: null, count: null, status: 'not_retrieved', url: `https://www.goodreads.com/search?q=${encodeURIComponent(`${b.title} ${b.author}`)}`, freshness: 'Unknown' }, amazon: { rating: null, count: null, status: 'not_retrieved', url: `https://www.amazon.com/s?k=${encodeURIComponent(isbn13 || `${b.title} ${b.author}`)}&i=stripbooks`, freshness: 'Unknown' } }, description: b.description, series: b.series, seriesMemberships: b.seriesMemberships, batchReason: reason, score, evidence, assessmentMode: ai ? 'model interpretation with validated catalog citations' : 'literal catalog evidence', identityStatus: 'Catalog work verified; a language-specific acquisition edition is not verified' });
     }
     return scored.sort((a, b) => b.score - a.score || a.catalogKey.localeCompare(b.catalogKey));
 }

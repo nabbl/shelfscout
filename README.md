@@ -36,6 +36,8 @@ For private HTTPS access, see [Tailscale / DockTail setup](docs/tailscale.md), i
 
 For prebuilt amd64/arm64 images and Arcane GitOps, see [CI / GHCR setup](docs/ci.md). GitHub Actions checks the app and containers before publishing to `ghcr.io/nabbl/shelfscout` and updating a digest-pinned deployment branch.
 
+Series recommendations start at a verified book one. In Settings, turn off **Allow books that are part of a series** to exclude known series. Book details can show the available series list and reading order. Discover offers removable mood suggestions backed by reading history or saved preferences; **Clear mood** returns to your usual taste.
+
 ## Install as an app
 
 Open your ShelfScout HTTPS address and choose **Install app** in a supported browser, or **Share → Add to Home Screen** in Safari on iPhone/iPad. ShelfScout opens in its own window with the new home-screen icon. It requires a connection to your ShelfScout server; offline reading and background sync are not provided.

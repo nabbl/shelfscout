@@ -1,10 +1,11 @@
+import { seriesEligible, startSeriesAtBookOne } from './series';
 import { queueRatingRefresh } from '../rating-refresh';
 import { normalize } from '../identity';
 import { withStoredRatings } from '../ratings';
 import { enrichHistory } from './history-evidence';
 import { randomUUID } from 'node:crypto';
 import type { ShelfDb } from '../db';
-import { activeFeedback, buildProfile } from './profile';
+import { activeFeedback, buildProfile, readSettings } from './profile';
 import { modelConfigured, interpretProfile, planDiscovery, assessCandidates } from './ai';
 import { defaultStrategies, searchCatalog, enrichBook, resolveAliases } from './catalog';
 import { rankPool, selectBatch, type RankContext } from './rank';
@@ -30,10 +31,12 @@ export function batchState(db: ShelfDb) {
         return { active, last: null };
     const result = JSON.parse(last.result_json);
     const context = rankContext(db, JSON.parse(last.input_json));
+    const allowSeries = readSettings(db).allowSeries;
     result.items = result.items.filter((b: {
+        series?: string | null; seriesMemberships?: import('./types').SeriesMembership[];
         workKey: string;
         catalogKey: string;
-    }) => { const keys = [b.workKey, b.catalogKey, ...(context.aliases.get(b.catalogKey) || [])]; return !keys.some(k => context.dismissed.has(k) || context.deferred.has(k) || context.saved.has(k) || context.requested.has(k) || (!context.rereads && context.known.has(k))); });
+    }) => { const keys = [b.workKey, b.catalogKey, ...(context.aliases.get(b.catalogKey) || [])]; return seriesEligible(b, allowSeries) && !keys.some(k => context.dismissed.has(k) || context.deferred.has(k) || context.saved.has(k) || context.requested.has(k) || (!context.rereads && context.known.has(k))); });
     result.items = result.items.map((item: import('./rank').RankedCandidate) => withStoredRatings(db, item));
     const ratingsJob = db.prepare("SELECT status,last_error FROM jobs WHERE type='ratings' AND json_extract(payload_json,'$.id')=? ORDER BY created_at DESC LIMIT 1").get(last.id);
     return { active, ratingsJob, last: { id: last.id, ...result, completedAt: last.completed_at } };
@@ -153,21 +156,27 @@ export async function generateBatch(db: ShelfDb, id: string) {
                 warnings.push(`Description unavailable for ${pool[i].title}; subject evidence only.`);
             }
         }
+        stage('Checking series starting points');
+        const seriesResult = await startSeriesAtBookOne(db, enriched, profile.settings.allowSeries, stage);
+        if (seriesResult.skipped) warnings.push(`${seriesResult.skipped} series candidates were omitted by your series preference or because book one could not be verified.`);
+        const finalPool = seriesResult.books;
+        resolveAliases(db, finalPool);
+        const finalContext = rankContext(db, input);
         stage('Assessing preferences, mood and tradeoffs');
         const assessments: Assessment[] = [];
         if (modelConfigured())
-            for (let i = 0; i < enriched.length; i += 12) {
+            for (let i = 0; i < finalPool.length; i += 12) {
                 try {
-                    assessments.push(...await assessCandidates(db, profile, input.mood, enriched.slice(i, i + 12)));
+                    assessments.push(...await assessCandidates(db, profile, input.mood, finalPool.slice(i, i + 12)));
                     aiStages++;
                 }
                 catch {
                     warnings.push(`AI candidate assessment ${1 + i / 12} unavailable or invalid; literal evidence retained.`);
                 }
             }
-        const ranked = rankPool(enriched, profile, context, assessments);
+        const ranked = rankPool(finalPool, profile, finalContext, assessments);
         const items = selectBatch(ranked).map(item => withStoredRatings(db, item));
-        const result = { items, profile, strategies, warnings: [...new Set(warnings)], rankingAdapter: aiStages ? 'AI-assisted with validated evidence (see stage warnings)' : 'deterministic evidence fallback', diagnostics: { catalogPool: byKey.size, eligible: eligible.size, assessed: enriched.length, modelAssessed: assessments.length, selected: items.length }, mood: input.mood, mode: input.mode };
+        const result = { items, profile, strategies, warnings: [...new Set(warnings)], rankingAdapter: aiStages ? 'AI-assisted with validated evidence (see stage warnings)' : 'deterministic evidence fallback', diagnostics: { catalogPool: byKey.size, eligible: eligible.size, assessed: finalPool.length, modelAssessed: assessments.length, selected: items.length }, mood: input.mood, mode: input.mode };
         const now = new Date().toISOString();
         db.transaction(() => { db.prepare("UPDATE recommendation_batches SET status='complete',stage='Complete',result_json=?,completed_at=? WHERE id=?").run(JSON.stringify(result), now, id); for (const b of items)
             db.prepare('INSERT OR IGNORE INTO recommendation_exposures VALUES(?,?,?,?,?)').run(id, b.workKey, b.catalogKey, b.author, now); if (process.env.BOOKORBIT_URL && items.length) queueRatingRefresh(db, id); })();

@@ -5,7 +5,7 @@ import { rankPool, selectBatch, type RankContext } from '../../src/lib/recommend
 import { workKey } from '../../src/lib/identity';
 import type { CatalogBook, Preference, Profile } from '../../src/lib/recommendation/types';
 const pref = (value: string, direction: 'prefer' | 'avoid' = 'prefer'): Preference => ({ id: value, dimension: 'theme', value, direction, origin: 'explicit', confidence: 'supported', support: ['synthetic-owner'], counterexamples: [] });
-const p: Profile = { version: 'synthetic-reader-v1', preferences: [pref('memory'), pref('war', 'avoid')], evidence: [], settings: { preferences: [], disabled: [], includeReviews: false, rereads: false }, unknown: [] };
+const p: Profile = { version: 'synthetic-reader-v1', preferences: [pref('memory'), pref('war', 'avoid')], evidence: [], settings: { preferences: [], disabled: [], includeReviews: false, rereads: false, allowSeries: true, hiddenMoods: [] }, unknown: [] };
 const books: CatalogBook[] = Array.from({ length: 30 }, (_, i) => ({ key: `/works/OL${i + 1}W`, title: `Synthetic work ${i + 1}`, author: `Author ${Math.floor(i / 2)}`, year: 2000, isbns: [], language: 'eng', coverUrl: null, subjects: i % 3 === 0 ? ['war'] : i % 3 === 1 ? ['adventure'] : ['memory'], description: `A story about ${i % 3 === 0 ? 'war' : i % 3 === 1 ? 'adventure' : 'memory'}.`, series: i < 4 ? 'Shared series' : null, strategies: ['synthetic'] }));
 const c: RankContext = { known: new Set(), dismissed: new Set(), deferred: new Set(), saved: new Set(), requested: new Set(), exposed: new Set(), aliases: new Map(), mood: '', rereads: false };
 const docs = books.map(b => ({ key: b.key, title: b.title, author_name: [b.author], subject: b.subjects }));
