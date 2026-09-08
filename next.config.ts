@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  distDir: process.env.SHELFSCOUT_BROWSER_TEST === 'true' ? '.next-browser' : '.next',
   output: "standalone",
   devIndicators: false,
   serverExternalPackages: ["better-sqlite3"],

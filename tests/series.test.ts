@@ -65,3 +65,29 @@ it('filters old batches immediately for the series preference and missing order'
   expect(batchState(db).last.items).toHaveLength(0);
   expect(seriesEligible({ series: 'Fixture Chronicles; Book 2' }, true)).toBe(false);
 });
+
+it('parses the live structured work-series shape without stringifying objects', async () => {
+  const db = database();
+  cache(db, 'work-v2:/works/OL2W', { key: sequel.key, title: sequel.title, series: [{ series: { key: '/series/OL123L' }, position: '2' }] });
+  cache(db, 'series-name-v1:OL123L', { links: { self: '/series/OL123L' }, name: series.name });
+  const book = await enrichBook(db, { ...sequel, series: '[object Object]', seriesMemberships: [] });
+  expect(primarySeries(book)).toEqual(series);
+  expect(book.series).not.toContain('[object Object]');
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('recognizes explicit series labels in subjects and numbered title suffixes without guessing order', async () => {
+  const db = database();
+  cache(db, 'work-v2:/works/OL2W', { key: sequel.key, title: sequel.title, subjects: ['series:Fixture Chronicles'] });
+  const book = await enrichBook(db, { ...sequel, series: null, seriesMemberships: [] });
+  expect(primarySeries(book)).toEqual({ key: null, name: series.name, position: null });
+  expect(primarySeries({ title: 'The Return (Fixture Chronicles, #5)' })).toEqual({ key: null, name: series.name, position: 5 });
+  expect(primarySeries({ title: 'A series of events', subjects: ['Fantasy'] })).toBeNull();
+});
+
+it('withholds legacy malformed series metadata until it can be refreshed', async () => {
+  const db = database();
+  const old = { ...sequel, series: '[object Object]', seriesMemberships: [] };
+  expect(seriesEligible(old, true)).toBe(false);
+  expect((await startSeriesAtBookOne(db, [old], true, vi.fn())).books).toEqual([]);
+});

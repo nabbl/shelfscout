@@ -118,3 +118,10 @@ Before normal acquisition, verify installed versions against the source snapshot
 ## Recommendation and rating sources
 
 Open Library discovery remains server-side, bounded and cached. Goodreads averages imported from CSV remain snapshots with unknown measurement time. Live Goodreads/Amazon averages and counts now come from BookOrbit’s read-only metadata provider search, matched by title/author and cached with source URLs and retrieval dates. Enable those providers in BookOrbit and configure automatic login; see the recommendation guide for lookup and refresh behavior. Neither source is scraped and ratings outages never block history or acquisition. Recommendation architecture is documented in [recommendation-system.md](recommendation-system.md).
+
+
+### Series selections and release display
+
+Series browsing can open the acquisition review for book one, an individual catalog member or up to 200 selected books. One language and collection apply to the selection. The authenticated, CSRF-protected acquisition endpoint validates the full payload and records the intents/jobs in one SQLite transaction. Repeated selections reuse existing requests using the existing edition/work and language identity rules. Every book then follows the normal ownership, release selection, download and verified import workflow independently; this does not introduce series-pack downloads.
+
+Activity exposes only compatible releases, capped at five, with exact edition matches first and upstream order preserved within each group. The server retains the full upstream result list and original indexes, and revalidates every selected release. Hidden incompatible releases cannot bypass those checks. Empty compatible results retain the actionable No compatible EPUB message and Recheck control. Compatible results with incomplete edition evidence still require explicit confirmation.

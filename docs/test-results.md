@@ -1,5 +1,13 @@
 # Verification results
 
+## 2026-09-08 — Series acquisition and compatible release selection
+
+- `npm test`: 185 passed in 19 files. New coverage includes live-shaped structured series records, explicit subject/title labels, malformed legacy values, direct-work fallback, transient retries, rate limits, partial lists, stale-list retention, current read/ownership/request markers, atomic multi-book recording/rollback, idempotent repeats, and original release selection indexes after filtering/capping.
+- Full `npm run test:browser:live`: 42 passed across desktop/mobile. The ten series acquisition checks also passed after switching the series-label action to a dedicated accessible dialog. These exercise book-five → book-one identity, default unread selection, select-all/clear, known owned/requested exclusions, shared language/collection selection, single bulk submission, partial lists, lookup retry, cancellation, CSRF, whole-payload validation and duplicate reuse. Mobile series and confirmation screenshots were inspected.
+- Lint, typecheck, production build and diff checks passed. Authenticated browser tests now use `.next-browser` alongside the user's development server and skip local dotenv processing for their fully supplied fixture environment. This fixes local dotenv expansion corrupting the fixture bcrypt hash.
+- Read-only live Open Library check: `/works/OL2577486W` resolved to The Witcher and returned eight catalog entries, including two prequels and an unknown-position entry. The scan completed, but coverage is still labelled potentially incomplete.
+- The idle local worker was restarted to load corrected series handling. No new live acquisition or recommendation batch was submitted, and no deployment was performed.
+
 ## 2026-09-07 — Series starting points and suggested moods
 
 - `npm test`: 127 passed in 18 files. New cases cover structured series fields, first-book substitution and its own evidence, deduplication, missing/conflicting order, prequels, pagination, series-disabled filtering, read/saved/dismissed exclusions, history-supported moods, negative preferences, hidden choices, stale supporting evidence and settings defaults.

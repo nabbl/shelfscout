@@ -45,6 +45,16 @@ export function recoverAcquisitions(db: Database.Database) {
   }).immediate();
 }
 export async function submitAcquisition(db: Database.Database, candidate: BookCandidate, targetCollectionId?: string) {
+  return recordAcquisition(db, candidate, targetCollectionId);
+}
+
+/** One local transaction records the entire selection before the worker contacts upstreams. */
+export function submitAcquisitions(db: Database.Database, candidates: BookCandidate[], targetCollectionId: string) {
+  if (!candidates.length || candidates.length > 200) throw new Error('Choose between 1 and 200 books.');
+  return db.transaction(() => candidates.map(candidate => recordAcquisition(db, candidate, targetCollectionId))).immediate();
+}
+
+function recordAcquisition(db: Database.Database, candidate: BookCandidate, targetCollectionId?: string) {
   if (!candidate.author?.trim() || !candidate.language || languageCode(candidate.language) === 'und') throw new Error('Resolve the book author and language before acquisition.');
   if (!targetCollectionId || !/^[1-9]\d*$/.test(targetCollectionId)) throw new Error('Choose an existing Kobo-enabled collection.');
   return db.transaction(() => {
@@ -100,8 +110,9 @@ export function publicAcquisitions(db: Database.Database) {
   const rows = db.prepare('SELECT id,title,author,language,status,last_error,updated_at,upstream_book_id,upstream_request_id FROM acquisitions ORDER BY created_at DESC LIMIT 200').all() as Acquisition[];
   return rows.map(row => {
     const f = flow(db, row.id);
-    const releases = f?.phase === 'selecting_release' ? (JSON.parse(f.releases_json) as Release[]).map((r, index) => ({ index, title: r.title, author: r.extra?.author, isbn: r.extra?.isbn13 || r.extra?.isbn, year: r.extra?.year, source: r.source, language: r.language, format: r.format, size: r.size, ...releaseAssessment(JSON.parse(f!.candidate_json), r) })) : [];
-    return { ...row, workflow: f ? 'shelfmark' : 'legacy_bookorbit', canRetryDownload: f?.phase === 'track_download' && !f.import_attempted_at, releases, events: db.prepare('SELECT status,detail,created_at FROM acquisition_events WHERE acquisition_id=? ORDER BY id DESC LIMIT 20').all(row.id) };
+    const compatible = f?.phase === 'selecting_release' ? (JSON.parse(f.releases_json) as Release[]).map((r, index) => ({ index, title: r.title, author: r.extra?.author, isbn: r.extra?.isbn13 || r.extra?.isbn, year: r.extra?.year, source: r.source, language: r.language, format: r.format, size: r.size, ...releaseAssessment(JSON.parse(f.candidate_json), r) })).filter(r => r.selectable).sort((a, b) => Number(b.exact) - Number(a.exact)) : [];
+    // Keep persisted indexes: truncating/reindexing the stored list would select the wrong file.
+    return { ...row, workflow: f ? 'shelfmark' : 'legacy_bookorbit', canRetryDownload: f?.phase === 'track_download' && !f.import_attempted_at, releases: compatible.slice(0, 5), compatibleReleaseCount: compatible.length, events: db.prepare('SELECT status,detail,created_at FROM acquisition_events WHERE acquisition_id=? ORDER BY id DESC LIMIT 20').all(row.id) };
   });
 }
 // Kept for previously persisted BookOrbit Requests only.

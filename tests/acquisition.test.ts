@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDatabase } from '../src/lib/db';
-import { acquisition, flow, publicAcquisitions, recoverAcquisitions, submitAcquisition, updateAcquisition, queueOwnershipChecks, queueAcquisition } from '../src/lib/acquisition';
+import { acquisition, flow, publicAcquisitions, recoverAcquisitions, submitAcquisition, submitAcquisitions, updateAcquisition, queueOwnershipChecks, queueAcquisition } from '../src/lib/acquisition';
 import { reconcileAcquisition, reconcileOwnedAcquisition } from '../src/lib/acquisition-worker';
 import { BookOrbitClient } from '../src/lib/bookorbit';
 import { ShelfmarkClient } from '../src/lib/shelfmark';
@@ -533,4 +533,39 @@ describe('Shelfmark → Book Dock → Kobo lifecycle', () => {
     const { h, start, step } = setup(); h.autoFinalize = true;
     await start(); await step(); await step(); await step(); expect(h.downloadPosts).toBe(0); expect(acquisition(h.db, h.id)!.status).toBe('needs_attention');
   });
+});
+
+
+it('records a bulk selection atomically, reuses existing requests and rolls back invalid selections', async () => {
+  const { h, fetchMock } = setup();
+  const books = [candidate, { ...candidate, title: 'The Next Book', isbn13: null }];
+  const first = submitAcquisitions(h.db, books, '12');
+  const repeated = submitAcquisitions(h.db, books, '12');
+  expect(first.map(r => r.acquisition!.id)).toEqual(repeated.map(r => r.acquisition!.id));
+  expect(repeated.every(r => r.idempotent)).toBe(true);
+  expect(h.db.prepare('SELECT count(*) n FROM jobs').get()).toEqual({ n: 2 });
+  expect(() => submitAcquisitions(h.db, [{ ...candidate, title: 'Should roll back', isbn13: null }, { ...candidate, author: '' }], '34')).toThrow('author and language');
+  expect(h.db.prepare('SELECT count(*) n FROM acquisitions').get()).toEqual({ n: 2 });
+  expect(h.db.prepare("SELECT count(*) n FROM acquisition_targets WHERE collection_id='34'").get()).toEqual({ n: 0 });
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('shows only five compatible releases with exact matches first and original selection indexes', async () => {
+  const { h, start, step } = setup();
+  h.releases = [{ ...release, title: 'Wrong Book' }, { ...release, language: 'de' }, ...Array.from({ length: 7 }, (_, i) => ({ ...release, source_id: `choice-${i}`, extra: i === 6 ? release.extra : { author: candidate.author, isbn13: '' } }))];
+  await start(); await step(); await step();
+  const item = publicAcquisitions(h.db)[0];
+  expect(item.compatibleReleaseCount).toBe(7);
+  expect(item.releases.map(r => r.index)).toEqual([8, 2, 3, 4, 5]);
+  expect(item.releases.every(r => r.selectable)).toBe(true);
+  expect(() => updateAcquisition(h.db, h.id, 'select_release', 0)).toThrow('compatible');
+  updateAcquisition(h.db, h.id, 'select_release', item.releases[0].index);
+  expect(JSON.parse(flow(h.db, h.id)!.release_json!).source_id).toBe('choice-6');
+});
+
+it('returns an empty picker when every release is incompatible', async () => {
+  const { h, start, step } = setup(); h.releases = [{ ...release, format: 'pdf' }];
+  await start(); await step(); await step();
+  expect(publicAcquisitions(h.db)[0]).toMatchObject({ releases: [], compatibleReleaseCount: 0, status: 'needs_attention' });
+  expect(acquisition(h.db, h.id)!.last_error).toContain('No compatible EPUB');
 });

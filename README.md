@@ -36,7 +36,7 @@ For private HTTPS access, see [Tailscale / DockTail setup](docs/tailscale.md), i
 
 For prebuilt amd64/arm64 images and Arcane GitOps, see [CI / GHCR setup](docs/ci.md). GitHub Actions checks the app and containers before publishing to `ghcr.io/nabbl/shelfscout` and updating a digest-pinned deployment branch.
 
-Series recommendations start at a verified book one. In Settings, turn off **Allow books that are part of a series** to exclude known series. Book details can show the available series list and reading order. Discover offers removable mood suggestions backed by reading history or saved preferences; **Clear mood** returns to your usual taste.
+Series recommendations start at a verified book one. In Settings, turn off **Allow books that are part of a series** to exclude known series. Click a series label or use Check series in book details to browse the available reading order. Get the verified first book, one listed book, or a selection with one language and Kobo collection choice. Unread books are selected by default; known owned/requested books are skipped. Each book has its own Activity entry. Series lists may be incomplete and are never presented as a guaranteed complete set. Discover offers removable mood suggestions backed by reading history or saved preferences; **Clear mood** returns to your usual taste.
 
 ## Install as an app
 
@@ -68,4 +68,4 @@ npm run test:browser:live
 npm run evaluate
 ```
 
-See [integration evidence](docs/integrations.md), the [implemented plan](docs/implementation-plan.md), and the [recorded verification results](docs/test-results.md). A live acquisition requires BookOrbit and Shelfmark credentials, an explicit library/folder target, a shared incoming directory, and an existing Kobo-enabled collection. Follow the [acquisition setup and recovery guide](docs/integrations.md) and [Arcane setup](docs/arcane.md). Setup and tests never perform live acquisition or collection changes.
+See [integration evidence](docs/integrations.md), the [implemented plan](docs/implementation-plan.md), and the [recorded verification results](docs/test-results.md). A live acquisition requires BookOrbit and Shelfmark credentials, an explicit library/folder target, a shared incoming directory, and an existing Kobo-enabled collection. Follow the [acquisition setup and recovery guide](docs/integrations.md) and [Arcane setup](docs/arcane.md). Setup and tests never perform live acquisition or collection changes. The release picker hides incompatible hits and shows up to five compatible results, prioritizing exact edition matches. Authenticated browser tests use a separate `.next-browser` build directory, so they can run alongside the development app.

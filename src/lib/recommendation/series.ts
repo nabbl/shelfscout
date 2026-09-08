@@ -1,26 +1,28 @@
 import type { ShelfDb } from '../db';
 import { normalize } from '../identity';
-import { enrichBook, searchCatalogPage, seriesPosition } from './catalog';
+import { enrichBook, searchCatalogPage } from './catalog';
+import { explicitSeries, namedSeries } from './series-metadata';
 import type { CatalogBook, SeriesMembership } from './types';
 
-export function primarySeries(book: { series?: string | null; seriesMemberships?: SeriesMembership[] }): SeriesMembership | null {
+export function primarySeries(book: { series?: string | null; seriesMemberships?: SeriesMembership[]; title?: string; subjects?: string[] }): SeriesMembership | null {
   if (book.seriesMemberships?.length) return book.seriesMemberships[0];
-  if (!book.series) return null;
-  const numbered = /^(.*?)\s*(?:[,;]\s*|\s+)(?:#|book\s+|volume\s+)(\d+(?:\.\d+)?)$/i.exec(book.series);
-  return { key: null, name: numbered?.[1] || book.series, position: numbered ? seriesPosition(numbered[2]) : null };
+  return namedSeries(book.series) || explicitSeries(book.title || '', book.subjects || [])[0] || null;
 }
 
 export function seriesEligible(book: { series?: string | null; seriesMemberships?: SeriesMembership[] }, allowSeries: boolean) {
+  if (book.series?.includes('[object Object]')) return false;
   const series = primarySeries(book);
   return !series || (allowSeries && series.position === 1);
 }
 
-export async function seriesCatalog(db: ShelfDb, series: SeriesMembership, author: string) {
-  const query = series.key ? `series_key:${series.key}` : `series_name:${JSON.stringify(series.name)} author:${JSON.stringify(author)}`;
+export async function seriesCatalog(db: ShelfDb, series: SeriesMembership, author: string, signal?: AbortSignal) {
+  const query = series.key ? `series_key:${series.key}` : `(series_name:${JSON.stringify(series.name)} OR subject:${JSON.stringify(`series:${series.name}`)}) author:${JSON.stringify(author)}`;
   const books = new Map<string, CatalogBook>();
   let complete = false;
   for (let page = 1; page <= 5; page++) {
-    const result = await searchCatalogPage(db, { kind: 'series', query, reason: 'Verify series membership and reading order' }, page);
+    let result;
+    try { result = await searchCatalogPage(db, { kind: 'series', query, reason: 'Verify series membership and reading order' }, page, signal); }
+    catch (error) { if (!books.size) throw error; break; }
     for (const book of result.books) {
       const membership = book.seriesMemberships?.find(m => series.key ? m.key === series.key : normalize(m.name) === normalize(series.name) && normalize(book.author) === normalize(author));
       if (membership) books.set(book.key, { ...book, series: membership.name, seriesMemberships: [membership, ...(book.seriesMemberships || []).filter(m => m !== membership)] });
@@ -36,6 +38,7 @@ export async function startSeriesAtBookOne(db: ShelfDb, books: CatalogBook[], al
   const lookups = new Map<string, Awaited<ReturnType<typeof seriesCatalog>>>();
   let skipped = 0;
   for (const book of books) {
+    if (book.series?.includes('[object Object]')) { skipped++; continue; }
     const series = primarySeries(book);
     if (!series) { selected.set(book.key, book); continue; }
     if (!allowSeries) { skipped++; continue; }

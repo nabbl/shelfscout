@@ -20,7 +20,8 @@ test('Activity release picker, safe recheck and readiness text work on desktop a
   await page.getByRole('navigation', { name: testInfo.project.name === 'mobile' ? 'Mobile navigation' : 'Primary', exact: true }).getByRole('button', { name: 'Activity', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'A Fixture Book' })).toBeVisible();
   await expect(page.getByText(/Device delivery is not confirmed/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Confirm this release' }).nth(1)).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Confirm this release' })).toHaveCount(1);
+  await expect(page.getByText('Language does not match.')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Confirm this release' }).first()).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Recheck / refresh releases' })).toBeVisible();
   const viewport = page.viewportSize()!;

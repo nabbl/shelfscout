@@ -25,7 +25,8 @@ export type Profile = {
     unknown: string[];
 };
 export type SeriesMembership = { key: string | null; name: string; position: number | null };
-export type SeriesEntry = { key: string; title: string; author: string; position: number | null; sourceUrl: string; read?: boolean };
+export type SeriesEntry = { key: string; title: string; author: string; position: number | null; sourceUrl: string; language?: string; coverUrl?: string | null; year?: number | null; read?: boolean; owned?: boolean; requested?: boolean };
+export type SeriesResult = { series: SeriesMembership | null; books: SeriesEntry[]; complete: boolean; message: string; checkedAt: string; stale: boolean };
 export type CatalogBook = {
     key: string;
     title: string;
