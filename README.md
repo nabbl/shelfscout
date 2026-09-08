@@ -38,6 +38,8 @@ For prebuilt amd64/arm64 images and Arcane GitOps, see [CI / GHCR setup](docs/ci
 
 Series recommendations start at a verified book one. In Settings, turn off **Allow books that are part of a series** to exclude known series. Click a series label or use Check series in book details to browse the available reading order. Get the verified first book, one listed book, or a selection with one language and Kobo collection choice. Unread books are selected by default; known owned/requested books are skipped. Each book has its own Activity entry. Series lists may be incomplete and are never presented as a guaranteed complete set. Discover offers removable mood suggestions backed by reading history or saved preferences; **Clear mood** returns to your usual taste.
 
+Click a recommendation’s cover to open its details. The card’s X opens feedback choices: Already read, Not now (30 days), or Not interested. Opening or cancelling the chooser leaves the book unchanged.
+
 ## Install as an app
 
 Open your ShelfScout HTTPS address and choose **Install app** in a supported browser, or **Share → Add to Home Screen** in Safari on iPhone/iPad. ShelfScout opens in its own window with the new home-screen icon. It requires a connection to your ShelfScout server; offline reading and background sync are not provided.

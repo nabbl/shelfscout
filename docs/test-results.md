@@ -1,5 +1,11 @@
 # Verification results
 
+## 2026-09-08 — Cover navigation and card feedback choices
+
+- Clicking a card's cover or placeholder opens book details; keyboard activation is supported. The X opens an accessible chooser for Already read, Not now and Not interested, with an optional reason for the latter two. Cancel/Escape restore focus to the X without writing feedback. Failed saves retain the chooser; pending saves disable duplicate actions.
+- Eighteen focused authenticated desktop/mobile browser checks passed, covering cover/placeholder navigation, all three feedback payloads, optional reasons, CSRF, cancellation/focus, single submission, failure/retry and the existing acquisition dialog. Six demo/branding checks also passed using the isolated build directory. The mobile chooser screenshot was inspected.
+- Lint, production build, typecheck and diff checks passed. No live feedback or acquisition was submitted.
+
 ## 2026-09-08 — Series acquisition and compatible release selection
 
 - `npm test`: 185 passed in 19 files. New coverage includes live-shaped structured series records, explicit subject/title labels, malformed legacy values, direct-work fallback, transient retries, rate limits, partial lists, stale-list retention, current read/ownership/request markers, atomic multi-book recording/rollback, idempotent repeats, and original release selection indexes after filtering/capping.
