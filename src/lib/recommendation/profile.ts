@@ -16,8 +16,8 @@ export function activeFeedback(db: ShelfDb) { return db.prepare('SELECT f.* FROM
 }[]; }
 export function buildProfile(db: ShelfDb): Profile {
     const settings = readSettings(db);
-    const rows = db.prepare('SELECT r.*, COALESCE(c.rating,r.personal_rating) AS effective_rating FROM reading_records r LEFT JOIN companion_ratings c ON c.work_key=r.work_key ORDER BY date_read DESC,id DESC').all() as Record<string, unknown>[];
-    const all: Evidence[] = rows.map(r => ({ id: `reading:${r.id}`, workKey: String(r.work_key), title: String(r.title), author: String(r.author || ''), rating: r.effective_rating == null ? null : Number(r.effective_rating), status: String(r.exclusive_status || 'unknown'), shelves: JSON.parse(String(r.shelves_json)), date: r.date_read ? String(r.date_read) : null, ...(settings.includeReviews && r.review ? { review: String(r.review).slice(0, 1800) } : {}) }));
+    const rows = db.prepare('SELECT r.*, COALESCE(c.rating,r.personal_rating) AS effective_rating, COALESCE(s.status,r.exclusive_status) AS effective_status FROM reading_records r LEFT JOIN companion_ratings c ON c.work_key=r.work_key LEFT JOIN companion_reading_statuses s ON s.work_key=r.work_key ORDER BY r.date_read DESC,r.id DESC').all() as Record<string, unknown>[];
+    const all: Evidence[] = rows.map(r => ({ id: `reading:${r.id}`, workKey: String(r.work_key), title: String(r.title), author: String(r.author || ''), rating: r.effective_rating == null ? null : Number(r.effective_rating), status: String(r.effective_status || 'unknown'), shelves: JSON.parse(String(r.shelves_json)), date: r.date_read ? String(r.date_read) : null, ...(settings.includeReviews && r.review ? { review: String(r.review).slice(0, 1800) } : {}) }));
     const feedback = activeFeedback(db);
     const ratings = db.prepare('SELECT * FROM companion_ratings').all() as {
         work_key: string;

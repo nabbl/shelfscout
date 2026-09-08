@@ -1,3 +1,18 @@
+import { z } from 'zod';
 import { getDb } from '@/src/lib/db';
-import { requireOwnerApi } from '@/src/lib/auth';
-export async function GET(request:Request){const auth=await requireOwnerApi();if(auth)return auth;const q=new URL(request.url).searchParams.get('q')?.trim()||'';const select='SELECT r.id,r.work_key,r.title,r.author,COALESCE(c.rating,r.personal_rating) AS personal_rating,r.exclusive_status,r.date_read,r.shelves_json,r.isbn13,r.isbn_valid FROM reading_records r LEFT JOIN companion_ratings c ON c.work_key=r.work_key';const rows=q?getDb().prepare(`${select} WHERE r.title LIKE ? ESCAPE '\\' OR r.author LIKE ? ESCAPE '\\' ORDER BY r.date_read DESC LIMIT 200`).all(`%${q.replace(/[%_\\]/g,'\\$&')}%`,`%${q.replace(/[%_\\]/g,'\\$&')}%`):getDb().prepare(`${select} ORDER BY r.date_read DESC LIMIT 200`).all();return Response.json({items:rows},{headers:{'Cache-Control':'private, no-store'}});}
+import { requireOwnerApi, requireCsrf } from '@/src/lib/auth';
+import { listHistory, setReadingStatus } from '@/src/lib/history';
+
+export async function GET(request: Request) {
+  const auth = await requireOwnerApi(); if (auth) return auth;
+  const query = new URL(request.url).searchParams.get('q')?.trim() || '';
+  return Response.json({ items: listHistory(getDb(), query) }, { headers: { 'Cache-Control': 'private, no-store' } });
+}
+export async function PATCH(request: Request) {
+  const auth = await requireOwnerApi(); if (auth) return auth;
+  const csrf = await requireCsrf(); if (csrf) return csrf;
+  const parsed = z.object({ workKey: z.string().min(16).max(128), status: z.enum(['read', 'to-read', 'currently-reading', 'dnf', 'on-hold']).nullable() }).safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return Response.json({ error: 'Choose a valid reading status.' }, { status: 400 });
+  if (!setReadingStatus(getDb(), parsed.data.workKey, parsed.data.status)) return Response.json({ error: 'Book not found in reading history.' }, { status: 404 });
+  return Response.json({ ok: true });
+}

@@ -7,11 +7,13 @@ export interface Candidate {
     year: number | null;
     isbn13: string | null;
     language: string;
+    languages?: string[];
     coverUrl: string | null;
     sourceUrl: string;
     sourceLabel: string;
     subjects: string[];
-    category: "strong fit" | "discovery" | "wildcard";
+    category: "strong fit" | "matches your interests" | "discovery" | "wildcard";
+    categoryReason?: string;
     why: string;
     caveat: string;
     ratings: {

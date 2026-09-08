@@ -40,6 +40,12 @@ Series recommendations start at a verified book one. In Settings, turn off **All
 
 Click a recommendation’s cover to open its details. The card’s X opens feedback choices: Already read, Not now (30 days), or Not interested. Opening or cancelling the chooser leaves the book unchanged.
 
+In History, change a book’s reading status directly or click its title to open its cover and details. Read, Want to read, Currently reading, Did not finish, and On hold are saved locally across Goodreads reimports; choose the Goodreads option to restore the source value. Covers use a valid imported ISBN, with an exact title/author catalog match as fallback. Status corrections inform subsequent recommendations.
+
+Set **Reading languages** in Settings to choose the languages you read (English by default). Discovery searches and both new and existing recommendations require matching catalog language metadata; unknown languages are withheld. Multilingual works use one of your selected languages for acquisition. Catalog work titles may still use the original language; the requested release language is checked separately. Search is available inside History.
+
+Recommendation badges describe the available evidence: **Matches your interests** covers broad or tentative overlap; **Strong fit** requires description-backed matches to at least two distinct, specific preferences across different dimensions, with no recorded conflict. Those preferences must be explicit or supported by multiple positively rated works without counterexamples. Genre, author, subject tags, and mood alone cannot earn Strong fit. **Wildcard** flags a match with a conflict; **Discovery** has insufficient preference evidence. Existing batches are relabelled when displayed.
+
 ## Install as an app
 
 Open your ShelfScout HTTPS address and choose **Install app** in a supported browser, or **Share → Add to Home Screen** in Safari on iPhone/iPad. ShelfScout opens in its own window with the new home-screen icon. It requires a connection to your ShelfScout server; offline reading and background sync are not provided.

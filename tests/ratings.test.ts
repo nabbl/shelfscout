@@ -7,7 +7,7 @@ import type { Candidate } from '../src/lib/recommendations';
 import type { CatalogBook, Profile } from '../src/lib/recommendation/types';
 
 const book: CatalogBook = { key: '/works/OL1W', title: 'The Remembered City', author: 'Test Author', year: 2000, isbns: [], language: 'eng', coverUrl: null, subjects: ['memory'], description: 'A city where memories disappear.', series: null, strategies: [] };
-const profile: Profile = { version: 'test', evidence: [], unknown: [], settings: { preferences: [], disabled: [], includeReviews: false, rereads: false, allowSeries: true, hiddenMoods: [] }, preferences: [{ id: 'memory', dimension: 'theme', value: 'memory', direction: 'prefer', origin: 'explicit', confidence: 'supported', support: ['owner'], counterexamples: [] }] };
+const profile: Profile = { version: 'test', evidence: [], unknown: [], settings: { preferences: [], disabled: [], includeReviews: false, rereads: false, allowSeries: true, hiddenMoods: [], languages: ['en'] }, preferences: [{ id: 'memory', dimension: 'theme', value: 'memory', direction: 'prefer', origin: 'explicit', confidence: 'supported', support: ['owner'], counterexamples: [] }] };
 const context = { known: new Set<string>(), dismissed: new Set<string>(), deferred: new Set<string>(), saved: new Set<string>(), requested: new Set<string>(), exposed: new Set<string>(), aliases: new Map<string, string[]>(), mood: '', rereads: false };
 const candidate = () => rankPool([book], profile, context)[0];
 

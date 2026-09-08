@@ -37,7 +37,8 @@ export async function startSeriesAtBookOne(db: ShelfDb, books: CatalogBook[], al
   const selected = new Map<string, CatalogBook>();
   const lookups = new Map<string, Awaited<ReturnType<typeof seriesCatalog>>>();
   let skipped = 0;
-  for (const book of books) {
+  for (const [index, book] of books.entries()) {
+    onStage(`Checking series starting points ${index + 1}/${books.length}`);
     if (book.series?.includes('[object Object]')) { skipped++; continue; }
     const series = primarySeries(book);
     if (!series) { selected.set(book.key, book); continue; }
@@ -47,7 +48,7 @@ export async function startSeriesAtBookOne(db: ShelfDb, books: CatalogBook[], al
     try {
       if (!lookups.has(key)) {
         if (lookups.size >= 8) { skipped++; continue; }
-        onStage(`Finding book one of ${series.name}`);
+        onStage(`Finding book one ${index + 1}/${books.length}: ${series.name}`);
         lookups.set(key, { books: [], complete: false });
         lookups.set(key, await seriesCatalog(db, series, book.author));
       }

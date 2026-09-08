@@ -17,7 +17,7 @@ function unwrapSpreadsheetIdentifier(value?: string) {
   const match = raw.match(/^="([^"]*)"$/);
   return { original: raw || null, parsed: (match ? match[1] : raw).trim() || null };
 }
-function validIsbn(value:string|null) {
+export function validIsbn(value:string|null) {
   if (!value) return false;
   const s=value.replace(/[-\s]/g,"");
   if (/^\d{13}$/.test(s)) { let sum=0; for(let i=0;i<12;i++) sum+=Number(s[i])*(i%2?3:1); return (10-sum%10)%10===Number(s[12]); }

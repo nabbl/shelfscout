@@ -28,7 +28,7 @@ export function BookRatings({ book, details = false }: { book: RatedBook; detail
       {details && available && rating?.message && <small>{rating.message}</small>}
       {details && <small>{available
         ? `${rating?.count == null ? 'Rating count unknown' : `${rating.count.toLocaleString()} ratings`}. ${rating?.freshness?.replace(/ via BookOrbit/gi, '') || 'Rating date unknown'}.`
-        : rating?.message || 'Use Refresh ratings to look up this book through BookOrbit.'}</small>}
+        : rating?.message || 'Ratings are looked up automatically for new suggestions when BookOrbit is connected.'}</small>}
     </div>;
   })}</div>;
 }

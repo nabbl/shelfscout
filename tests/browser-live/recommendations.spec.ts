@@ -5,14 +5,16 @@ test('authenticated discovery, durable worker, preferences, details, feedback an
     await page.getByLabel('Password').fill('browser-test-password');
     await page.getByRole('button', { name: /sign in/i }).click();
     await expect(page.getByText('PRIVATE · LIVE DATA')).toBeVisible();
-    await page.getByRole('button', { name: 'More picks', exact: true }).click();
+    await page.getByRole('button', { name: 'Regenerate suggestions', exact: true }).click();
     await expect(page.getByRole('heading', { name: /Synthetic browser book/ }).first()).toBeVisible({ timeout: 30000 });
     const title = await page.getByRole('heading', { name: /Synthetic browser book/ }).first().textContent();
     await page.getByRole('button', { name: 'Why this book?' }).first().click();
     await expect(page.getByRole('heading', { name: 'Catalog description' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Why it fits' })).toBeVisible();
     await expect(page.getByText('A synthetic fixture story about memory.', { exact: true })).toBeVisible();
-    // Strong-fit fixture books omit the former generic batch explanation.
+    // Broad interest matches have an honest badge and no generic batch explanation.
+    await expect(page.getByRole('dialog').getByText('MATCHES YOUR INTERESTS', { exact: true })).toBeVisible();
+    await expect(page.getByText('The catalog matches some of your interests. More specific evidence is needed to call this a strong fit.', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Why this batch' })).toHaveCount(0);
     await page.getByRole('button', { name: 'Close', exact: true }).click();
     await page.getByRole('button', { name: `Save ${title}`, exact: true }).click();
@@ -28,11 +30,11 @@ test('authenticated discovery, durable worker, preferences, details, feedback an
     const log = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Saved books and feedback' }) });
     await expect(log.getByText(new RegExp(title!))).toBeVisible();
     await log.getByRole('button', { name: 'Undo', exact: true }).first().click();
-    await expect(log.getByText('Undone. Refresh picks to reconsider this book.')).toBeVisible();
+    await expect(log.getByText('Undone. Regenerate suggestions to reconsider this book.')).toBeVisible();
     await page.getByRole('button', { name: 'Discover', exact: true }).filter({ visible: true }).first().click();
-    const before = await page.getByRole('heading', { name: /Synthetic browser book/ }).allTextContents();
-    await page.getByRole('button', { name: 'More picks', exact: true }).click();
-    await expect.poll(async () => { const after = await page.getByRole('heading', { name: /Synthetic browser book/ }).allTextContents(); return after.length > 0 && after.every(t => !before.includes(t)); }, { timeout: 30000 }).toBe(true);
+    const before = (await (await page.request.get('/api/recommendations')).json()).last.id;
+    await page.getByRole('button', { name: 'Regenerate suggestions', exact: true }).click();
+    await expect.poll(async () => { const after = (await (await page.request.get('/api/recommendations')).json()).last; return after.id !== before && after.items.length > 0; }, { timeout: 30000 }).toBe(true);
     await page.screenshot({path:`docs/evaluation/browser-${testInfo.project.name}.png`,fullPage:false});
 });
 test('private APIs reject anonymous requests and writes require CSRF', async ({ request }) => { for (const url of ['/api/taste', '/api/recommendations', '/api/feedback', '/api/export'])

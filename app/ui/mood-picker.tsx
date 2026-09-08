@@ -36,11 +36,11 @@ export function MoodPicker({ live, value, batchId, onChange, onSettings }: { liv
     finally { setBusy(false); }
   }
   return <section className="mood-picker" aria-labelledby="mood-heading">
-    <div className="mood-heading"><div><h2 id="mood-heading">What are you in the mood for?</h2><p>Choose a focus for your next picks. This changes the batch, not your saved taste.</p></div><button onClick={onSettings}>Tune my taste</button></div>
+    <div className="mood-heading"><div><h2 id="mood-heading">Reading mood</h2></div><button onClick={onSettings}>Tune my taste</button></div>
     {loading && <p role="status">Finding suggestions from your reading…</p>}
     {error && <p role="alert">{error} <button onClick={() => setRevision(v => v + 1)}>Retry</button></p>}
     <div className="mood-options">{options.map(option => <div className="mood-option" key={option.id}><div><button className={value === option.query ? 'active' : ''} aria-pressed={value === option.query} disabled={busy} onClick={() => onChange(value === option.query ? '' : option.query)}>{option.label}</button><button className="remove-mood" aria-label={`Remove ${option.label} suggestion`} disabled={busy} onClick={() => void changeHidden(option)}><X size={16}/></button></div><small>{option.reason}</small></div>)}</div>
-    {!loading && !options.length && !error && <p>{hidden ? 'Your mood suggestions are hidden. Restore them below when you want them back.' : 'Suggestions appear from your read books, ratings and saved preferences. Refresh picks after importing history to include catalog themes.'}</p>}
-    <div className="mood-controls">{value ? <><span>Current focus: {options.find(option => option.query === value)?.label || value}</span><button onClick={() => onChange('')}>Clear mood</button></> : <span>No mood selected — use my usual taste.</span>}{hidden > 0 && <button disabled={busy} onClick={() => void changeHidden()}>Restore hidden moods</button>}</div>
+    {!loading && !options.length && !error && <p>{hidden ? 'Your mood suggestions are hidden. Restore them below when you want them back.' : 'Suggestions appear from your read books, ratings and saved preferences. Regenerate suggestions after importing history to include catalog themes.'}</p>}
+    {(value || hidden > 0) && <div className="mood-controls">{value ? <><span>Current focus: {options.find(option => option.query === value)?.label || value}</span><button onClick={() => onChange('')}>Clear mood</button></> : <span>No mood selected — use my usual taste.</span>}{hidden > 0 && <button disabled={busy} onClick={() => void changeHidden()}>Restore hidden moods</button>}</div>}
   </section>;
 }

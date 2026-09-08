@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { readingLanguages, type ReadingLanguage } from '../languages';
+export const readingLanguageSchema = z.custom<ReadingLanguage>(value => readingLanguages.some(language => language.code === value));
 export const preferenceSchema = z.object({ id: z.string().max(100), dimension: z.enum(['theme', 'prose', 'pacing', 'character', 'tone', 'structure', 'length', 'ambiguity', 'subject', 'author']), value: z.string().min(1).max(120), direction: z.enum(['prefer', 'avoid']), origin: z.enum(['explicit', 'inferred', 'model']), confidence: z.enum(['tentative', 'supported', 'conflicting']), support: z.array(z.string()).max(16), counterexamples: z.array(z.string()).max(16) });
 export type Preference = z.infer<typeof preferenceSchema>;
-export const settingsSchema = z.object({ preferences: z.array(preferenceSchema).max(60).default([]), disabled: z.array(z.string().max(100)).max(100).default([]), includeReviews: z.boolean().default(false), rereads: z.boolean().default(false), allowSeries: z.boolean().default(true), hiddenMoods: z.array(z.string().max(80)).max(100).default([]) });
+export const settingsSchema = z.object({ languages: z.array(readingLanguageSchema).min(1).max(readingLanguages.length).transform(values => [...new Set(values)]).default(['en']), preferences: z.array(preferenceSchema).max(60).default([]), disabled: z.array(z.string().max(100)).max(100).default([]), includeReviews: z.boolean().default(false), rereads: z.boolean().default(false), allowSeries: z.boolean().default(true), hiddenMoods: z.array(z.string().max(80)).max(100).default([]) });
 export type TasteSettings = z.infer<typeof settingsSchema>;
 export type Evidence = {
     catalog?: {key:string;description:string;subjects:string[];sourceUrl:string};
@@ -34,6 +36,7 @@ export type CatalogBook = {
     year: number | null;
     isbns: string[];
     language: string;
+    languages?: string[];
     coverUrl: string | null;
     subjects: string[];
     description: string;
@@ -43,6 +46,7 @@ export type CatalogBook = {
 };
 export type Assessment = {
     key: string;
+    explanation?: { text: string; preferenceIds: string[] } | null;
     matches: {
         preferenceId: string;
         quote: string;

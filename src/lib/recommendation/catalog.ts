@@ -56,7 +56,7 @@ export async function searchCatalogPage(db: ShelfDb, strategy: Strategy, page = 
   const books = raw.docs.flatMap(d => {
     const parsed = docSchema.safeParse(d); if (!parsed.success) return [];
     const v = parsed.data, seriesMemberships = memberships(v);
-    return [{ key: v.key, title: v.title, author: v.author_name[0], year: v.first_publish_year ?? null, isbns: (v.isbn || []).filter(s => /^\d{13}$/.test(s)), language: v.language?.includes('eng') ? 'eng' : v.language?.[0] || 'und', coverUrl: v.cover_i ? `https://covers.openlibrary.org/b/id/${v.cover_i}-L.jpg` : null, subjects: (v.subject || []).slice(0, 40).map(s => s.slice(0, 160)), description: '', series: seriesMemberships[0]?.name || null, seriesMemberships, strategies: [strategy.query] }];
+    return [{ key: v.key, title: v.title, author: v.author_name[0], year: v.first_publish_year ?? null, isbns: (v.isbn || []).filter(s => /^\d{13}$/.test(s)), language: v.language?.includes('eng') ? 'eng' : v.language?.[0] || 'und', languages: v.language || [], coverUrl: v.cover_i ? `https://covers.openlibrary.org/b/id/${v.cover_i}-L.jpg` : null, subjects: (v.subject || []).slice(0, 40).map(s => s.slice(0, 160)), description: '', series: seriesMemberships[0]?.name || null, seriesMemberships, strategies: [strategy.query] }];
   });
   return { books, total: raw.numFound ?? raw.num_found ?? (raw.docs.length === 40 ? page * 40 + 1 : (page - 1) * 40 + raw.docs.length) };
 }

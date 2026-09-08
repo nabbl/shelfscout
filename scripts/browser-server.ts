@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import bcrypt from 'bcryptjs';
 import { createDatabase } from '../src/lib/db';
 import { buildProfile, hash } from '../src/lib/recommendation/profile';
+import { languageQuery } from '../src/lib/languages';
 import { defaultStrategies } from '../src/lib/recommendation/catalog';
 const dir = mkdtempSync(join(tmpdir(), 'shelfscout-browser-'));
 const filename = join(dir, 'fixture.sqlite');
@@ -18,11 +19,22 @@ const fixtureProfile=buildProfile(db);fixtureProfile.preferences.push({...prefer
 for (const mood of ['', 'adventure'])
     for (const strategy of defaultStrategies(fixtureProfile, mood))
         for (let page = 1; page <= 5; page++) {
-            const params = new URLSearchParams({ q: strategy.query, fields: 'key,title,author_name,first_publish_year,cover_i,isbn,language,subject,series_key,series_name,series_position', limit: '40', page: String(page) });
+            const params = new URLSearchParams({ q: languageQuery(strategy.query, fixtureProfile.settings.languages), fields: 'key,title,author_name,first_publish_year,cover_i,isbn,language,subject,series_key,series_name,series_position', limit: '40', page: String(page) });
             cache(`catalog-v3:${hash(params.toString())}`, { docs });
         }
 for (const d of docs)
     cache(`work-v2:${d.key}`, { key: d.key, title: d.title, description: 'A synthetic fixture story about memory.', subjects: ['memory'] });
+// Imported browser history has explicit empty identity matches; worker tests stay offline.
+for (const project of ['desktop', 'mobile'])
+    for (const kind of ['status', 'failure', 'cover']) {
+        const query = `title:${JSON.stringify(`History ${kind} ${project}`)} author:"History Fixture Writer"`;
+        const params = new URLSearchParams({ q: query, fields: 'key,title,author_name,first_publish_year,cover_i,isbn,language,subject,series_key,series_name,series_position', limit: '40', page: '1' });
+        cache(`catalog-v3:${hash(params.toString())}`, { docs: [], numFound: 0 });
+    }
+for (let page = 1; page <= 5; page++) {
+    const params = new URLSearchParams({ q: languageQuery('author:"History Fixture Writer"', ['en']), fields: 'key,title,author_name,first_publish_year,cover_i,isbn,language,subject,series_key,series_name,series_position', limit: '40', page: String(page) });
+    cache(`catalog-v3:${hash(params.toString())}`, { docs });
+}
 db.close();
 // The fixture supplies its full environment. Skip local dotenv expansion, which
 // would otherwise corrupt the literal bcrypt hash and load the owner's settings.
