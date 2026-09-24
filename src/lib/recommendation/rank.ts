@@ -1,4 +1,5 @@
 import { fitCategory, isBroadGenre } from './fit';
+import { genreQuote, genreTerms, recommendationEligible } from './eligibility';
 import { preferredBookLanguage } from '../languages';
 import { publicationAgeEligible } from './publication-age';
 import { primarySeries } from './series';
@@ -45,6 +46,8 @@ function strength(p: Preference) { return p.origin === 'explicit' ? 4 : p.confid
 export function rankPool(books: CatalogBook[], profile: Profile, context: RankContext, assessments: Assessment[] = []): RankedCandidate[] {
     const scored: RankedCandidate[] = [];
     for (const b of books) {
+        const ai = assessments.find(a => a.key === b.key);
+        if (!recommendationEligible(b, profile, ai)) continue;
         if (!publicationAgeEligible(b, profile.settings.maxBookAgeYears)) continue;
         const language = preferredBookLanguage(b, profile.settings.languages);
         if (!language) continue;
@@ -55,7 +58,6 @@ export function rankPool(books: CatalogBook[], profile: Profile, context: RankCo
         const has = (set: Set<string>) => identities.some(k => set.has(k));
         if ((!context.rereads && has(context.known)) || has(context.dismissed) || has(context.deferred) || has(context.exposed) || has(context.saved) || has(context.requested))
             continue;
-        const ai = assessments.find(a => a.key === b.key);
         const matched = new Map<string, {
             quote: string;
             interpretation?: string;
@@ -63,7 +65,7 @@ export function rankPool(books: CatalogBook[], profile: Profile, context: RankCo
             field: 'author' | 'subjects' | 'description';
         }>();
         for (const p of profile.preferences) {
-            const quote = (p.dimension === 'author' && textMatch(b.author, p.value) ? b.author : '') || b.subjects.find(s => textMatch(s, p.value)) || (textMatch(b.description, p.value) ? b.description : '');
+            const quote = genreTerms(p.value) ? genreQuote(b, p.value) : (p.dimension === 'author' && textMatch(b.author, p.value) ? b.author : '') || b.subjects.find(s => textMatch(s, p.value)) || (textMatch(b.description, p.value) ? b.description : '');
             if (quote)
                 matched.set(p.id, { quote, negative: p.direction === 'avoid', field: p.dimension === 'author' && quote === b.author ? 'author' : b.subjects.includes(quote) ? 'subjects' : 'description' });
         }

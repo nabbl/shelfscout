@@ -3,7 +3,7 @@ import { modelConnection } from '../model-connection';
 import type { ShelfDb } from '../db';
 import { hash, representative } from './profile';
 import { preferenceSchema, type Profile, type CatalogBook, type Assessment } from './types';
-export const PROMPT_VERSION = 'grounded-v8-excerpt-references';
+export const PROMPT_VERSION = 'grounded-v9-genre-eligibility';
 export function modelConfigured() { return Boolean(process.env.MODEL_BASE_URL?.trim() && process.env.MODEL_NAME?.trim()); }
 /** Actionable diagnostics without exposing provider bodies or private model inputs. */
 export function modelFailureReason(error: unknown): string {
@@ -39,7 +39,7 @@ export async function interpretProfile(db: ShelfDb, profile: Profile): Promise<P
     return { ...profile, sourceVersion:profile.sourceVersion||profile.version, preferences: [...profile.preferences, ...valid], version: hash({ base: profile.version, valid, prompt: PROMPT_VERSION }) };
 }
 export const strategySchema = z.object({ strategies: z.array(z.object({ kind: z.enum(['theme', 'author', 'related', 'exploration', 'mood']), query: z.string().min(2).max(160), reason: z.string().max(300) })).min(1).max(8) });
-export async function planDiscovery(db: ShelfDb, profile: Profile, mood: string) { return modelJson(db, 'discovery', 'Return {strategies:[{kind:"theme"|"author"|"related"|"exploration"|"mood",query,reason}]}. Queries are Open Library searches, not URLs. Use complementary themes, similar/contrasting authors, translated literature and deliberate exploration. Mood overrides historical preference for this batch. Series policy: when series are allowed, seek book one, never a sequel or prequel; when disabled, seek standalone works. Catalog membership/order will be verified separately. Do not search for already-read titles. No claim of relatedness without evidence.', { preferences: profile.preferences, evidence: representative(profile), mood, allowSeries: profile.settings.allowSeries }, strategySchema); }
+export async function planDiscovery(db: ShelfDb, profile: Profile, mood: string) { return modelJson(db, 'discovery', 'Return {strategies:[{kind:"theme"|"author"|"related"|"exploration"|"mood",query,reason}]}. Queries are Open Library searches, not URLs. Use subject:"genre or theme" and author:"full name" fields rather than bare keywords. Seek novels in the explicitly preferred genres. Books ABOUT a genre (encyclopedias, criticism, guides) do not satisfy a preference for reading that genre. Do not seek anthologies or short-story collections unless explicitly preferred. Use complementary themes and subgenres within the requested genres, positively rated or similar authors, and translated novels. Avoided genres are exclusions, including romantasy under alternate labels fantasy romance or romantic fantasy. Mood guides this batch within those constraints. Series policy: when series are allowed, seek book one, never a sequel or prequel; when disabled, seek standalone works. Catalog membership/order will be verified separately. Do not search for already-read titles. No claim of relatedness without evidence.', { preferences: profile.preferences, evidence: representative(profile), mood, allowSeries: profile.settings.allowSeries }, strategySchema); }
 const link = z.object({ preferenceId: z.string(), quote: z.string().min(3).max(500), field: z.enum(['subjects', 'description']), interpretation: z.string().max(500) });
 export const assessmentItemSchema = z.object({
     key: z.string(),

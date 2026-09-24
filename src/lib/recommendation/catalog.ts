@@ -6,6 +6,7 @@ import { cached } from './ai';
 import { hash } from './profile';
 import type { CatalogBook, Profile, SeriesMembership } from './types';
 import { explicitSeries, namedSeries, seriesPosition } from './series-metadata';
+import { genreTerms, preferredGenres } from './eligibility';
 export { seriesPosition } from './series-metadata';
 const docSchema = z.object({ key: z.string().regex(/^\/works\/OL\d+W$/), title: z.string().min(1).max(500), author_name: z.array(z.string()).min(1), first_publish_year: z.number().optional(), cover_i: z.number().optional(), isbn: z.array(z.string()).optional(), language: z.array(z.string()).optional(), subject: z.array(z.string()).optional(), series_key: z.array(z.string()).optional(), series_name: z.array(z.string()).optional(), series_position: z.array(z.union([z.string(), z.number(), z.null()])).optional() });
 export type Strategy = {
@@ -13,7 +14,23 @@ export type Strategy = {
     query: string;
     reason: string;
 };
-export function defaultStrategies(profile: Profile, mood: string): Strategy[] { const positive = profile.preferences.filter(p => p.direction === 'prefer').slice(0, 5); const authors = [...new Set(profile.evidence.filter(e => (e.rating || 0) >= 4).map(e => e.author).filter(Boolean))].slice(0, 2); return [...(mood ? [{ kind: 'mood', query: mood, reason: 'Current mood' }] : []), ...positive.map(p => ({ kind: 'theme', query: `subject:${JSON.stringify(p.value)}`, reason: `Preference ${p.id}` })), ...authors.map(a => ({ kind: 'author', query: `author:${JSON.stringify(a)}`, reason: 'Another work by a positively rated author; enjoyment is unproven' })), { kind: 'exploration', query: 'subject:"translated fiction"', reason: 'Explore translated fiction' }, { kind: 'exploration', query: 'subject:"short stories"', reason: 'Explore a different narrative form' }, ...(positive.length ? [] : [{ kind: 'exploration', query: 'subject:"literary fiction"', reason: 'Sparse profile: broad discovery, not personalized fit' }])].slice(0, 10); }
+export function defaultStrategies(profile: Profile, mood: string): Strategy[] {
+  const positive = profile.preferences.filter(p => p.direction === 'prefer').sort((a, b) => Number(b.origin === 'explicit') - Number(a.origin === 'explicit')).slice(0, 5);
+  const authors = [...new Set(profile.evidence.filter(e => (e.rating || 0) >= 4).map(e => e.author).filter(Boolean))].slice(0, 2);
+  const exploration = preferredGenres(profile).flatMap(p => {
+    const terms = genreTerms(p.value)!;
+    const subjects = terms.includes('science fiction') ? ['space opera', 'first contact'] : terms.includes('fantasy') ? ['epic fantasy', 'fantasy adventure'] : [];
+    return subjects.map(subject => ({ kind: 'exploration', query: `subject:${JSON.stringify(subject)}`, reason: `Explore within your preference for ${p.value}` }));
+  });
+  return [
+    ...(mood ? [{ kind: 'mood', query: mood, reason: 'Current mood' }] : []),
+    ...positive.map(p => ({ kind: 'theme', query: `subject:${JSON.stringify(p.value)}`, reason: `Preference ${p.id}` })),
+    ...authors.map(a => ({ kind: 'author', query: `author:${JSON.stringify(a)}`, reason: 'Another work by a positively rated author; enjoyment is unproven' })),
+    ...exploration,
+    { kind: 'exploration', query: 'subject:"translated fiction"', reason: 'Explore translated fiction' },
+    ...(positive.length ? [] : [{ kind: 'exploration', query: 'subject:"literary fiction"', reason: 'Sparse profile: broad discovery, not personalized fit' }]),
+  ].slice(0, 10);
+}
 export const CATALOG_FIELDS = 'key,title,author_name,first_publish_year,cover_i,isbn,language,subject,series_key,series_name,series_position';
 
 function memberships(doc: z.infer<typeof docSchema>): SeriesMembership[] {

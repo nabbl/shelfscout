@@ -1,4 +1,5 @@
 import { withFitCategory } from './fit';
+import { discoveryQuery, genreTerms, preferredGenres, recommendationEligible } from './eligibility';
 import { languageQuery, preferredBookLanguage } from '../languages';
 import { publicationAgeEligible, publicationAgeQuery } from './publication-age';
 import { seriesEligible, startSeriesAtBookOne } from './series';
@@ -35,7 +36,10 @@ export function batchState(db: ShelfDb) {
     const result = JSON.parse(last.result_json);
     const context = rankContext(db, JSON.parse(last.input_json));
     const settings = readSettings(db);
+    const avoided = new Set(settings.preferences.filter(p => p.origin === 'explicit' && p.direction === 'avoid' && genreTerms(p.value)).map(p => p.id));
     result.items = result.items.flatMap((book: import('./rank').RankedCandidate) => {
+        if (!recommendationEligible(book, { preferences: settings.preferences })) return [];
+        if (book.evidence?.some(e => e.kind === 'risk' && avoided.has(e.preferenceId) && e.catalogQuote && (e.field === 'description' ? book.description : book.subjects.join('; ')).includes(e.catalogQuote))) return [];
         if (!publicationAgeEligible(book, settings.maxBookAgeYears)) return [];
         const language = preferredBookLanguage(book, settings.languages);
         return language ? [{ ...book, language }] : [];
@@ -127,7 +131,7 @@ export async function generateBatch(db: ShelfDb, id: string) {
             catch (error) {
                 warnings.push(`AI discovery planning unavailable: ${modelFailureReason(error)}. Using evidence-driven searches.`);
             }
-        strategies = strategies.map(strategy => ({ ...strategy, query: publicationAgeQuery(languageQuery(strategy.query, profile.settings.languages), profile.settings.maxBookAgeYears) }));
+        strategies = strategies.map(strategy => ({ ...strategy, query: publicationAgeQuery(languageQuery(discoveryQuery(strategy.query, profile), profile.settings.languages), profile.settings.maxBookAgeYears) }));
         const count = (db.prepare("SELECT COUNT(*) AS n FROM recommendation_batches WHERE status='complete'").get() as {
             n: number;
         }).n;
@@ -180,8 +184,10 @@ export async function generateBatch(db: ShelfDb, id: string) {
         if (seriesResult.skipped) warnings.push(`${seriesResult.skipped} series candidates were omitted by your series preference or because book one could not be verified.`);
         const languagePool = seriesResult.books.filter(book => preferredBookLanguage(book, profile.settings.languages));
         if (languagePool.length < seriesResult.books.length) warnings.push('Some series starting points were omitted because their language did not match your settings.');
-        const finalPool = languagePool.filter(book => publicationAgeEligible(book, profile.settings.maxBookAgeYears));
-        if (finalPool.length < languagePool.length) warnings.push('Some series starting points were omitted because their first publication year did not meet your book age limit or was unknown.');
+        const agePool = languagePool.filter(book => publicationAgeEligible(book, profile.settings.maxBookAgeYears));
+        if (agePool.length < languagePool.length) warnings.push('Some series starting points were omitted because their first publication year did not meet your book age limit or was unknown.');
+        const finalPool = agePool.filter(book => recommendationEligible(book, profile));
+        if (finalPool.length < agePool.length) warnings.push('Some books were omitted because their format or genre conflicted with your reading preferences.');
         resolveAliases(db, finalPool);
         const finalContext = rankContext(db, input);
         stage('Assessing preferences, mood and tradeoffs');
@@ -202,7 +208,10 @@ export async function generateBatch(db: ShelfDb, id: string) {
             }
         stage('Ranking recommendations');
         const ranked = rankPool(finalPool, profile, finalContext, assessments);
-        const items = selectBatch(ranked).map(item => withStoredRatings(db, item));
+        // Once evidence has been read and assessed, do not pad genre-focused
+        // batches with unrelated works just to reach nine cards.
+        const supported = preferredGenres(profile).length ? ranked.filter(book => book.evidence.some(e => e.kind === 'match')) : ranked;
+        const items = selectBatch(supported).map(item => withStoredRatings(db, item));
         if (!items.length) warnings.push('No unread matches for your reading preferences. Regenerate suggestions or review Reading languages and Book age in Settings.');
         const result = { items, profile, strategies, warnings: [...new Set(warnings)], rankingAdapter: aiStages ? 'AI-assisted with validated evidence (see stage warnings)' : 'deterministic evidence fallback', diagnostics: { catalogPool: byKey.size, eligible: eligible.size, assessed: finalPool.length, modelAssessed: assessments.length, selected: items.length }, mood: input.mood, mode: input.mode };
         const now = new Date().toISOString();
