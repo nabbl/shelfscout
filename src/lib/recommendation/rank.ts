@@ -1,5 +1,6 @@
 import { fitCategory, isBroadGenre } from './fit';
 import { preferredBookLanguage } from '../languages';
+import { publicationAgeEligible } from './publication-age';
 import { primarySeries } from './series';
 import { normalize, workKey } from '../identity';
 import type { Candidate } from '../recommendations';
@@ -44,6 +45,7 @@ function strength(p: Preference) { return p.origin === 'explicit' ? 4 : p.confid
 export function rankPool(books: CatalogBook[], profile: Profile, context: RankContext, assessments: Assessment[] = []): RankedCandidate[] {
     const scored: RankedCandidate[] = [];
     for (const b of books) {
+        if (!publicationAgeEligible(b, profile.settings.maxBookAgeYears)) continue;
         const language = preferredBookLanguage(b, profile.settings.languages);
         if (!language) continue;
         if (!profile.settings.allowSeries && primarySeries(b)) continue;

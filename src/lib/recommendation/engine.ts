@@ -1,5 +1,6 @@
 import { withFitCategory } from './fit';
 import { languageQuery, preferredBookLanguage } from '../languages';
+import { publicationAgeEligible, publicationAgeQuery } from './publication-age';
 import { seriesEligible, startSeriesAtBookOne } from './series';
 import { queueRatingRefresh } from '../rating-refresh';
 import { normalize } from '../identity';
@@ -35,6 +36,7 @@ export function batchState(db: ShelfDb) {
     const context = rankContext(db, JSON.parse(last.input_json));
     const settings = readSettings(db);
     result.items = result.items.flatMap((book: import('./rank').RankedCandidate) => {
+        if (!publicationAgeEligible(book, settings.maxBookAgeYears)) return [];
         const language = preferredBookLanguage(book, settings.languages);
         return language ? [{ ...book, language }] : [];
     });
@@ -125,17 +127,20 @@ export async function generateBatch(db: ShelfDb, id: string) {
             catch (error) {
                 warnings.push(`AI discovery planning unavailable: ${modelFailureReason(error)}. Using evidence-driven searches.`);
             }
-        strategies = strategies.map(strategy => ({ ...strategy, query: languageQuery(strategy.query, profile.settings.languages) }));
+        strategies = strategies.map(strategy => ({ ...strategy, query: publicationAgeQuery(languageQuery(strategy.query, profile.settings.languages), profile.settings.maxBookAgeYears) }));
         const count = (db.prepare("SELECT COUNT(*) AS n FROM recommendation_batches WHERE status='complete'").get() as {
             n: number;
         }).n;
         const page = input.mode === 'more' ? 1 + Math.floor(count / 2) % 5 : 1;
         const byKey = new Map<string, CatalogBook>();
+        let successfulSearches = 0;
         // Sequential searches respect the public catalog's modest request budget. No arbitrary model URLs are fetched.
         for (let i = 0; i < strategies.length; i++) {
             stage(`Searching catalog ${i + 1}/${strategies.length}`);
             try {
-                for (const b of await searchCatalog(db, strategies[i], page)) {
+                const books = await searchCatalog(db, strategies[i], page);
+                successfulSearches++;
+                for (const b of books) {
                     const previous = byKey.get(b.key);
                     byKey.set(b.key, previous ? { ...previous, strategies: [...new Set([...previous.strategies, ...b.strategies])] } : b);
                 }
@@ -144,7 +149,7 @@ export async function generateBatch(db: ShelfDb, id: string) {
                 warnings.push(`Catalog search ${i + 1} failed; other searches retained.`);
             }
         }
-        if (!byKey.size)
+        if (!byKey.size && !successfulSearches)
             throw new Error('No catalog candidates were available. Check catalog connectivity and retry.');
         resolveAliases(db, [...byKey.values()]);
         const context = rankContext(db, input);
@@ -173,8 +178,10 @@ export async function generateBatch(db: ShelfDb, id: string) {
         stage('Checking series starting points');
         const seriesResult = await startSeriesAtBookOne(db, enriched, profile.settings.allowSeries, stage);
         if (seriesResult.skipped) warnings.push(`${seriesResult.skipped} series candidates were omitted by your series preference or because book one could not be verified.`);
-        const finalPool = seriesResult.books.filter(book => preferredBookLanguage(book, profile.settings.languages));
-        if (finalPool.length < seriesResult.books.length) warnings.push('Some series starting points were omitted because their language did not match your settings.');
+        const languagePool = seriesResult.books.filter(book => preferredBookLanguage(book, profile.settings.languages));
+        if (languagePool.length < seriesResult.books.length) warnings.push('Some series starting points were omitted because their language did not match your settings.');
+        const finalPool = languagePool.filter(book => publicationAgeEligible(book, profile.settings.maxBookAgeYears));
+        if (finalPool.length < languagePool.length) warnings.push('Some series starting points were omitted because their first publication year did not meet your book age limit or was unknown.');
         resolveAliases(db, finalPool);
         const finalContext = rankContext(db, input);
         stage('Assessing preferences, mood and tradeoffs');
@@ -196,7 +203,7 @@ export async function generateBatch(db: ShelfDb, id: string) {
         stage('Ranking recommendations');
         const ranked = rankPool(finalPool, profile, finalContext, assessments);
         const items = selectBatch(ranked).map(item => withStoredRatings(db, item));
-        if (!items.length) warnings.push('No unread matches in your selected languages. Regenerate suggestions or review Reading languages in Settings.');
+        if (!items.length) warnings.push('No unread matches for your reading preferences. Regenerate suggestions or review Reading languages and Book age in Settings.');
         const result = { items, profile, strategies, warnings: [...new Set(warnings)], rankingAdapter: aiStages ? 'AI-assisted with validated evidence (see stage warnings)' : 'deterministic evidence fallback', diagnostics: { catalogPool: byKey.size, eligible: eligible.size, assessed: finalPool.length, modelAssessed: assessments.length, selected: items.length }, mood: input.mood, mode: input.mode };
         const now = new Date().toISOString();
         stage('Saving recommendations');

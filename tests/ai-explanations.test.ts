@@ -6,7 +6,7 @@ import type { Assessment, CatalogBook, Preference, Profile } from '../src/lib/re
 
 const preference = (value: string, dimension: Preference['dimension'] = 'theme'): Preference => ({ id: value, value, dimension, direction: 'prefer', origin: 'explicit', confidence: 'supported', support: ['owner'], counterexamples: [] });
 const preferences = [preference('fantasy'), preference('science fiction'), preference('moral dilemmas', 'character')];
-const profile: Profile = { version: 'test', preferences, evidence: [], unknown: [], settings: { preferences, languages: ['en'], disabled: [], hiddenMoods: [], includeReviews: false, rereads: false, allowSeries: true } };
+const profile: Profile = { version: 'test', preferences, evidence: [], unknown: [], settings: { maxBookAgeYears: null, preferences, languages: ['en'], disabled: [], hiddenMoods: [], includeReviews: false, rereads: false, allowSeries: true } };
 const context: RankContext = { known: new Set(), dismissed: new Set(), deferred: new Set(), saved: new Set(), requested: new Set(), exposed: new Set(), aliases: new Map(), mood: '', rereads: false };
 const book: CatalogBook = { key: '/works/OL1W', title: 'A Divided City', author: 'A Writer', year: 2020, language: 'eng', isbns: [], coverUrl: null, subjects: ['Fantasy fiction', 'Science fiction, fantasy, horror'], description: 'A healer must choose between saving her city and protecting the exiled people it fears.', series: null, strategies: ['test'] };
 const assessment: Assessment = {
